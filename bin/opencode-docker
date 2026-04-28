@@ -8,6 +8,29 @@
 
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+bootstrap() {
+    local ocd_dir="$HOME/.opencode-docker"
+    local repo_dir="${OPENCODE_DOCKER_REPO:-$SCRIPT_DIR}"
+
+    mkdir -p "$ocd_dir"
+    chmod 700 "$ocd_dir"
+
+    mkdir -p "$ocd_dir/secrets"
+    chmod 700 "$ocd_dir/secrets"
+
+    if [ -d "$repo_dir/config" ] && [ ! -d "$ocd_dir/config" ]; then
+        cp -r "$repo_dir/config" "$ocd_dir/config"
+    fi
+
+    if [ ! -f "$HOME/.gitconfig" ] && [ -f "$repo_dir/.gitconfig" ]; then
+        cp "$repo_dir/.gitconfig" "$HOME/.gitconfig"
+    fi
+}
+
+bootstrap
+
 # Default workspace to current directory if not specified
 WORKSPACE="${OPENCODE_WORKSPACE:-$(pwd)}"
 
@@ -47,7 +70,7 @@ docker run --rm $DOCKER_FLAGS \
     ${BRAINSTORM_HOST:+-e BRAINSTORM_HOST="${BRAINSTORM_HOST}"} \
     -v "$HOME/.opencode-docker:/app:rw" \
     -v "$HOME/.gitconfig:/app/.gitconfig:ro" \
-    -v "$HOME/.config/opencode:/app/.config/opencode:ro" \
+    -v "$HOME/.opencode-docker/config:/app/.config/opencode:ro" \
     -v "$HOME/.opencode-docker/secrets:/run/secrets:ro" \
     -v "$WORKSPACE:/workspace:rw" \
     opencode-docker:latest /workspace "$@"
