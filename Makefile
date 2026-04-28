@@ -15,7 +15,7 @@ endif
 	docker tag opencode-docker:$(VERSION) opencode-docker:latest
 
 build-latest:
-	@VERSION=$$(npm view opencode-ai version) && \
+	@VERSION=$$(curl -s https://api.github.com/repos/anomalyco/opencode/releases/latest | jq -r '.tag_name' | sed 's/^v//') && \
 	echo "Building opencode-docker:$$VERSION..." && \
 	$(MAKE) build VERSION=$$VERSION && \
 	$(MAKE) tag-latest VERSION=$$VERSION
