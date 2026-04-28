@@ -17,8 +17,15 @@ bootstrap() {
     mkdir -p "$ocd_dir/secrets"
     chmod 700 "$ocd_dir/secrets"
 
-    if [ -d "$repo_dir/config" ] && [ ! -d "$ocd_dir/config" ]; then
-        cp -r "$repo_dir/config" "$ocd_dir/config"
+    # Always sync config files from repo (overwrite existing)
+    if [ -d "$repo_dir/config" ]; then
+        cp -f "$repo_dir/config"/*.json "$ocd_dir/config/" 2>/dev/null || true
+    fi
+
+    # Create placeholder API key if no secrets exist
+    if [ ! "$(ls -A "$ocd_dir/secrets" 2>/dev/null)" ]; then
+        echo "sk-placeholder-replace-me" > "$ocd_dir/secrets/anthropic_api_key"
+        chmod 600 "$ocd_dir/secrets/anthropic_api_key"
     fi
 
     if [ ! -f "$HOME/.gitconfig" ] && [ -f "$repo_dir/.gitconfig" ]; then
