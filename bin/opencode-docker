@@ -77,7 +77,7 @@ docker run --rm $DOCKER_FLAGS \
     ${BRAINSTORM_HOST:+-e BRAINSTORM_HOST="${BRAINSTORM_HOST}"} \
     -v "$HOME/.opencode-docker:/app:rw" \
     "${GITCONFIG_MOUNT[@]}" \
-    -v "$HOME/.opencode-docker/config:/app/.config/opencode:ro" \
+    -v "$HOME/.opencode-docker/config:/app/.config/opencode:rw" \
     -v "$HOME/.opencode-docker/secrets:/run/secrets:ro" \
     -v "$WORKSPACE:/workspace:rw" \
     opencode-docker:latest /workspace "$@"
