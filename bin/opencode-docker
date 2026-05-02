@@ -26,17 +26,6 @@ bootstrap() {
         cp -a "$repo_dir/config/." "$ocd_dir/config/"
     fi
 
-    if ! compgen -G "$ocd_dir/secrets/*" > /dev/null; then
-        echo "sk-placeholder-replace-me" > "$ocd_dir/secrets/context7_api_key"
-        chmod 600 "$ocd_dir/secrets/context7_api_key"
-    fi
-
-    if [ -f "$ocd_dir/secrets/context7_api_key" ] && grep -qx "sk-placeholder-replace-me" "$ocd_dir/secrets/context7_api_key"; then
-        echo "Placeholder key detected in $ocd_dir/secrets/context7_api_key" >&2
-        echo "Replace it with a real API key before running opencode-docker." >&2
-        exit 1
-    fi
-
     if [ ! -f "$HOME/.gitconfig" ] && [ -f "$repo_dir/.gitconfig" ]; then
         cp "$repo_dir/.gitconfig" "$HOME/.gitconfig"
     fi
