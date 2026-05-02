@@ -252,9 +252,7 @@ This project uses file-based secrets instead of environment variables for improv
    chmod 600 ~/.opencode-docker/secrets/*
    ```
 
-   If the secrets directory is empty on first run, the wrapper creates
-   `~/.opencode-docker/secrets/context7_api_key` with a placeholder value and exits
-   with an error so you can replace it.
+   The wrapper does not auto-create placeholder secret files.
 
 3. The entrypoint script automatically loads all files from `/run/secrets` as environment variables:
    - Filenames are converted to uppercase
