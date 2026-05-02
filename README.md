@@ -125,7 +125,7 @@ docker run --rm -it \
   --memory=2g \
   --cpus=2 \
   -v ~/.opencode-docker:/app:rw \
-  -v /path/to/opencode-docker/config:/app/.config/opencode:ro \
+  -v /path/to/opencode-docker/config:/app/.config/opencode:rw \
   -v $(pwd):/workspace:rw \
   -v ~/.opencode-docker/secrets:/run/secrets:ro \
   opencode-docker /workspace
@@ -150,6 +150,7 @@ This container is configured with multiple layers of security hardening:
 
 - **Read-only root filesystem:** Prevents any persistence or tampering inside the container
 - **Dropped capabilities:** Only the minimum required capabilities
+- **No new privileges:** Prevents privilege escalation via setuid/suid binaries
 - **Unprivileged user:** Runs as UID 1000 by default (configurable at build time)
 - **Memory/CPU limits:** Configurable to prevent resource exhaustion
 - **tmpfs for /tmp:** Ensures /tmp is writable but memory-backed
@@ -175,7 +176,7 @@ This container is configured with multiple layers of security hardening:
 | Option | Description |
 |--------|-------------|
 | `--cap-drop ALL` | Drops all Linux capabilities. By default, containers get a subset of root capabilities. Dropping all removes abilities like changing file ownership, binding to privileged ports, loading kernel modules, etc. |
-| `--security-opt seccomp=unconfined` | Disables seccomp filtering. This weakens security by allowing all system calls, but is needed for compatibility with Bun/Node.js. Ideally, use a custom seccomp profile instead. |
+| `--security-opt no-new-privileges` | Prevents the container process and its children from gaining new privileges via setuid binaries or suid executables. This blocks privilege escalation attacks even if the container is compromised, ensuring the container cannot escape its restricted permissions. |
 
 #### Resource Limits
 
@@ -189,7 +190,7 @@ This container is configured with multiple layers of security hardening:
 | Option | Description |
 |--------|-------------|
 | `-v .../homebase:/app:rw` | Mounts homebase as read-write home directory. Isolates persistent data; container only has access to this specific directory. |
-| `-v .../config:/app/.config/opencode:ro` | Mounts config as read-only. Prevents the container from modifying its own configuration (defense against tampering). |
+| `-v .../config:/app/.config/opencode:rw` | Mounts config as read-write. Allows OpenCode to persist MCP server configurations, custom skills, and other settings. The config directory is initialized from the repository and persisted in the user's home directory for persistence. |
 | `-v .../workspace:/workspace:rw` | Mounts workspace as read-write. Limits file access to only the intended working directory. |
 
 #### Environment Variables
@@ -205,9 +206,6 @@ This container is configured with multiple layers of security hardening:
 - `--cap-drop ALL` follows the principle of least privilege
 - Resource limits prevent denial-of-service attacks
 - Read-only config mount prevents configuration tampering
-
-**Potential improvement:**
-- `seccomp=unconfined` weakens security. If possible, create a custom seccomp profile that allows only the syscalls OpenCode needs, rather than disabling filtering entirely.
 
 ## Configuration and Persistence
 

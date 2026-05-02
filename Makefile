@@ -35,7 +35,7 @@ run:
 		-e BRAINSTORM_PORT=$(BRAINSTORM_PORT) \
 		-e BRAINSTORM_HOST=0.0.0.0 \
 		-v $(shell pwd)/homebase:/app:rw \
-		-v $(shell pwd)/config:/app/.config/opencode:ro \
+		-v $(shell pwd)/config:/app/.config/opencode:rw \
 		-v $(shell pwd)/workspace:/workspace:rw \
 		-v $(shell pwd)/secrets:/run/secrets:ro \
 		opencode-docker:latest /workspace
@@ -52,7 +52,7 @@ shell:
 		-e BRAINSTORM_PORT=$(BRAINSTORM_PORT) \
 		-e BRAINSTORM_HOST=0.0.0.0 \
 		-v $(shell pwd)/homebase:/app:rw \
-		-v $(shell pwd)/config:/app/.config/opencode:ro \
+		-v $(shell pwd)/config:/app/.config/opencode:rw \
 		-v $(shell pwd)/workspace:/workspace:rw \
 		-v $(shell pwd)/secrets:/run/secrets:ro \
 		--entrypoint /bin/bash \
