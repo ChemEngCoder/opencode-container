@@ -9,23 +9,30 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 bootstrap() {
     local ocd_dir="$HOME/.opencode-docker"
-    local repo_dir="${OPENCODE_DOCKER_REPO:-$SCRIPT_DIR}"
+    local repo_dir="${OPENCODE_DOCKER_REPO:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 
     mkdir -p "$ocd_dir"
     chmod 700 "$ocd_dir"
 
+    mkdir -p "$ocd_dir/config"
     mkdir -p "$ocd_dir/secrets"
+    chmod 700 "$ocd_dir/config"
     chmod 700 "$ocd_dir/secrets"
 
-    # Always sync config files from repo (overwrite existing)
+    # Always sync config directory from repo (overwrite existing files)
     if [ -d "$repo_dir/config" ]; then
-        cp -f "$repo_dir/config"/*.json "$ocd_dir/config/" 2>/dev/null || true
+        cp -a "$repo_dir/config/." "$ocd_dir/config/"
     fi
 
-    # Create placeholder API key if no secrets exist
-    if [ ! "$(ls -A "$ocd_dir/secrets" 2>/dev/null)" ]; then
-        echo "sk-placeholder-replace-me" > "$ocd_dir/secrets/anthropic_api_key"
-        chmod 600 "$ocd_dir/secrets/anthropic_api_key"
+    if ! compgen -G "$ocd_dir/secrets/*" > /dev/null; then
+        echo "sk-placeholder-replace-me" > "$ocd_dir/secrets/context7_api_key"
+        chmod 600 "$ocd_dir/secrets/context7_api_key"
+    fi
+
+    if [ -f "$ocd_dir/secrets/context7_api_key" ] && grep -qx "sk-placeholder-replace-me" "$ocd_dir/secrets/context7_api_key"; then
+        echo "Placeholder key detected in $ocd_dir/secrets/context7_api_key" >&2
+        echo "Replace it with a real API key before running ocd." >&2
+        exit 1
     fi
 
     if [ ! -f "$HOME/.gitconfig" ] && [ -f "$repo_dir/.gitconfig" ]; then
@@ -44,6 +51,11 @@ else
     DOCKER_FLAGS="-i"
 fi
 
+GITCONFIG_MOUNT=()
+if [ -f "$HOME/.gitconfig" ]; then
+    GITCONFIG_MOUNT=(-v "$HOME/.gitconfig:/app/.gitconfig:ro")
+fi
+
 docker run --rm $DOCKER_FLAGS \
     --read-only \
     --tmpfs /tmp:exec,size=512m \
@@ -52,7 +64,7 @@ docker run --rm $DOCKER_FLAGS \
     --memory=2g \
     --cpus=2 \
     -v "$HOME/.opencode-docker:/app:rw" \
-    -v "$HOME/.gitconfig:/app/.gitconfig:ro" \
+    "${GITCONFIG_MOUNT[@]}" \
     -v "$HOME/.opencode-docker/config:/app/.config/opencode:ro" \
     -v "$WORKSPACE:/workspace:rw" \
     -v "$HOME/.opencode-docker/secrets:/run/secrets:ro" \

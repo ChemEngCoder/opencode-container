@@ -12,16 +12,29 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 bootstrap() {
     local ocd_dir="$HOME/.opencode-docker"
-    local repo_dir="${OPENCODE_DOCKER_REPO:-$SCRIPT_DIR}"
+    local repo_dir="${OPENCODE_DOCKER_REPO:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 
     mkdir -p "$ocd_dir"
     chmod 700 "$ocd_dir"
 
+    mkdir -p "$ocd_dir/config"
     mkdir -p "$ocd_dir/secrets"
+    chmod 700 "$ocd_dir/config"
     chmod 700 "$ocd_dir/secrets"
 
-    if [ -d "$repo_dir/config" ] && [ ! -d "$ocd_dir/config" ]; then
-        cp -r "$repo_dir/config" "$ocd_dir/config"
+    if [ -d "$repo_dir/config" ]; then
+        cp -a "$repo_dir/config/." "$ocd_dir/config/"
+    fi
+
+    if ! compgen -G "$ocd_dir/secrets/*" > /dev/null; then
+        echo "sk-placeholder-replace-me" > "$ocd_dir/secrets/context7_api_key"
+        chmod 600 "$ocd_dir/secrets/context7_api_key"
+    fi
+
+    if [ -f "$ocd_dir/secrets/context7_api_key" ] && grep -qx "sk-placeholder-replace-me" "$ocd_dir/secrets/context7_api_key"; then
+        echo "Placeholder key detected in $ocd_dir/secrets/context7_api_key" >&2
+        echo "Replace it with a real API key before running opencode-docker." >&2
+        exit 1
     fi
 
     if [ ! -f "$HOME/.gitconfig" ] && [ -f "$repo_dir/.gitconfig" ]; then
@@ -58,6 +71,11 @@ else
     DOCKER_FLAGS="-i"
 fi
 
+GITCONFIG_MOUNT=()
+if [ -f "$HOME/.gitconfig" ]; then
+    GITCONFIG_MOUNT=(-v "$HOME/.gitconfig:/app/.gitconfig:ro")
+fi
+
 docker run --rm $DOCKER_FLAGS \
 	--read-only \
 	--tmpfs /tmp:exec,size=512m \
@@ -69,7 +87,7 @@ docker run --rm $DOCKER_FLAGS \
     ${BRAINSTORM_PORT:+-e BRAINSTORM_PORT="${BRAINSTORM_PORT}"} \
     ${BRAINSTORM_HOST:+-e BRAINSTORM_HOST="${BRAINSTORM_HOST}"} \
     -v "$HOME/.opencode-docker:/app:rw" \
-    -v "$HOME/.gitconfig:/app/.gitconfig:ro" \
+    "${GITCONFIG_MOUNT[@]}" \
     -v "$HOME/.opencode-docker/config:/app/.config/opencode:ro" \
     -v "$HOME/.opencode-docker/secrets:/run/secrets:ro" \
     -v "$WORKSPACE:/workspace:rw" \

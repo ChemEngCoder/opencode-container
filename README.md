@@ -21,7 +21,7 @@ make build
 
 # Set up your secrets (one-time)
 mkdir -p ~/.opencode-docker/secrets
-echo "your-api-key" > ~/.opencode-docker/secrets/anthropic_api_key
+echo "your-api-key" > ~/.opencode-docker/secrets/context7_api_key
 chmod 600 ~/.opencode-docker/secrets/*
 
 # Run using the wrapper script (recommended)
@@ -251,6 +251,10 @@ This project uses file-based secrets instead of environment variables for improv
    echo "your-api-key" > ~/.opencode-docker/secrets/context7_api_key
    chmod 600 ~/.opencode-docker/secrets/*
    ```
+
+   If the secrets directory is empty on first run, the wrapper creates
+   `~/.opencode-docker/secrets/context7_api_key` with a placeholder value and exits
+   with an error so you can replace it.
 
 3. The entrypoint script automatically loads all files from `/run/secrets` as environment variables:
    - Filenames are converted to uppercase
