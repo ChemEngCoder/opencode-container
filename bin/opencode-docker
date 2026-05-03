@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # OpenCode Docker wrapper script
-# Add this directory to your PATH to run OpenCode from anywhere
+# Add this directory to your PATH to run the Docker isolated OpenCode from anywhere
 #
 # Options:
 #   -b, --brainstorm    Enable brainstorming server (exposes port for real-time collaboration)
@@ -66,8 +66,8 @@ if [ -f "$HOME/.gitconfig" ]; then
 fi
 
 docker run --rm $DOCKER_FLAGS \
-	--read-only \
-	--tmpfs /tmp:exec,size=512m \
+    --read-only \
+    --tmpfs /tmp:exec,size=512m \
     --cap-drop=ALL \
     --security-opt=no-new-privileges \
     --memory=2g \
