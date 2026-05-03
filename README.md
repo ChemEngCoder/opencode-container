@@ -55,16 +55,10 @@ source ~/.bashrc
 
 ##### Fish
 
-Add to your `~/.config/fish/config.fish`:
+Run the following command to add opencode-docker to your path. Replace the Path with the correct path for your environment.
 
 ```fish
 fish_add_path $HOME/git/opencode-docker/bin
-```
-
-Then reload:
-
-```fish
-source ~/.config/fish/config.fish
 ```
 
 #### Usage
@@ -121,7 +115,7 @@ docker run --rm -it \
   --read-only \
   --tmpfs /tmp:exec,size=512m \
   --cap-drop ALL \
-  --security-opt seccomp=unconfined \
+  --security-opt=no-new-privileges \
   --memory=2g \
   --cpus=2 \
   -v ~/.opencode-docker:/app:rw \
@@ -284,7 +278,7 @@ The [Superpowers](https://github.com/obra/superpowers) plugin includes a visual 
 
 ### Port Configuration
 
-The visual companion server is exposed on port **42000** by default. This port is:
+The visual companion server is exposed on a random port by default. This port is:
 
 - Pre-configured in `bin/opencode-docker` and `make run`/`make shell`
 - Set via the `BRAINSTORM_PORT=42000` environment variable
@@ -292,12 +286,8 @@ The visual companion server is exposed on port **42000** by default. This port i
 
 ### Usage
 
-When the Superpowers brainstorming skill starts a server, it will use port 42000. Access it at:
+When the Superpowers brainstorming skill starts a server, it will use a random port. Access it at:
 
 ```
-http://localhost:42000
+http://localhost:<port>
 ```
-
-### Changing the Port
-
-To use a different port, update both the `-p` flag and `-e BRAINSTORM_PORT=` value in your `docker run` command or the wrapper scripts.
