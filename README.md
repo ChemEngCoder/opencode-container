@@ -11,7 +11,7 @@ This repository provides a Dockerized environment for running the [OpenCode](htt
 ### Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/) installed on your machine.
-- An API key for your preferred AI provider (e.g., [Anthropic](https://console.anthropic.com/) or [OpenAI](https://platform.openai.com/)).
+- Make
 
 ### Quick Start
 
