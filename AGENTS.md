@@ -6,9 +6,9 @@ OpenCode Docker - containerized environment for running OpenCode CLI.
 
 ```
 .
-├── Dockerfile          # Multi-stage build: node:25-slim
+├── Dockerfile          # Multi-stage build ending in distroless base
 ├── Makefile            # Build commands (development use)
-├── entrypoint.sh       # Loads secrets, starts Xvfb, runs opencode
+├── bootstrap.py        # Loads secrets, starts Xvfb, runs opencode
 ├── bin/opencode-docker # Wrapper script (recommended for regular use)
 ├── config/             # Mounted read-only at /app/.config/opencode
 │   ├── opencode.json   # MCP servers and plugin config
@@ -47,7 +47,7 @@ echo "sk-..." > ~/.opencode-docker/secrets/anthropic_api_key
 chmod 600 ~/.opencode-docker/secrets/*
 ```
 
-Entrypoint converts filenames to uppercase env vars: `anthropic_api_key` → `ANTHROPIC_API_KEY`.
+Bootstrap script converts filenames to uppercase env vars: `anthropic_api_key` → `ANTHROPIC_API_KEY`.
 
 ## Container environment
 

@@ -12,6 +12,7 @@ This repository provides a Dockerized environment for running the [OpenCode](htt
 
 - [Docker](https://docs.docker.com/get-docker/) installed on your machine.
 - Make
+- `curl` and `jq` (required for `make build-latest`)
 
 ### Quick Start
 
@@ -90,6 +91,18 @@ When using the wrapper script, all persistent data is stored in `~/.opencode-doc
 
 This directory is automatically created on first run.
 
+## Runtime Model
+
+The production image is a multi-stage build with a distroless runtime:
+
+- **Final runtime image:** `gcr.io/distroless/base-debian12`
+- **Node.js:** NodeSource Node 24 packages installed in the build stage and copied with runtime deps
+- **Python:** Debian 12 packages (`python3`, including `python3-venv`) installed in the build stage and copied with runtime deps
+- **OpenCode:** installed in the build stage via the official `curl https://opencode.ai/install | bash` installer
+- **Container startup:** `bootstrap.py` (Python) loads file-based secrets from `/run/secrets`, starts Xvfb, then `exec`s `opencode`
+
+Because the final image is distroless, it does not include an interactive shell like `/bin/bash`.
+
 ## Makefile
 
 The Makefile is primarily for development and testing within this repository:
@@ -100,7 +113,7 @@ make build VERSION=1.3.17       # Build with version tag (opencode-docker:1.3.17
 make build-latest               # Auto-discover latest opencode-ai version, build & tag as latest
 make tag-latest VERSION=1.3.17  # Tag latest to point to a version
 make run                        # Run container (uses ./workspace as working dir)
-make shell                      # Shell into container
+make shell                      # Shell into builder-tools stage (bash available)
 make clean                      # Remove image
 ```
 
@@ -199,7 +212,7 @@ This container is configured with multiple layers of security hardening:
 - `--read-only` + `--tmpfs` implements the immutable infrastructure pattern
 - `--cap-drop ALL` follows the principle of least privilege
 - Resource limits prevent denial-of-service attacks
-- Read-only config mount prevents configuration tampering
+- Config and workspace mounts are scoped to explicit host paths
 
 ## Configuration and Persistence
 
@@ -209,7 +222,7 @@ When using the wrapper script (`bin/opencode-docker`):
 |------|----------|-------------|
 | **Home Directory** | `~/.opencode-docker/` | Persistent home for OpenCode (cache, plugins, settings) |
 | **Secrets** | `~/.opencode-docker/secrets/` | API keys (see below) |
-| **Config** | `./config/` (this repo) | OpenCode config, mounted read-only |
+| **Config** | `./config/` (this repo) | OpenCode config, mounted read-write |
 | **Workspace** | Current directory | Your project files, mounted read-write |
 
 When using `make run` (for development):
@@ -246,7 +259,7 @@ This project uses file-based secrets instead of environment variables for improv
 
    The wrapper does not auto-create placeholder secret files.
 
-3. The entrypoint script automatically loads all files from `/run/secrets` as environment variables:
+3. The runtime bootstrap (`bootstrap.py`) automatically loads all files from `/run/secrets` as environment variables:
    - Filenames are converted to uppercase
    - Dashes and dots are replaced with underscores
    - Example: `anthropic_api_key` becomes `ANTHROPIC_API_KEY`

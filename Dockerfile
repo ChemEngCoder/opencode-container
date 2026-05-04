@@ -1,41 +1,62 @@
-# Build stage: install dependencies
-FROM node:25-slim AS builder
+FROM debian:12-slim AS builder-tools
 
 ARG USER_UID=1000
 ARG USER_GID=1000
+ARG NODE_MAJOR=24
+
+ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install --no-install-recommends -y \
+    ca-certificates \
     curl \
+    gnupg \
     git \
+    python3 \
+    python3-venv \
+    xvfb \
+    xclip \
+    wl-clipboard \
     && rm -rf /var/lib/apt/lists/*
 
-RUN npm install -g opencode-ai @upstash/context7-mcp @modelcontextprotocol/server-sequential-thinking
+RUN mkdir -p /etc/apt/keyrings && \
+    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \
+    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_${NODE_MAJOR}.x nodistro main" > /etc/apt/sources.list.d/nodesource.list && \
+    apt-get update && apt-get install --no-install-recommends -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
 
-# Runtime stage: minimal image
-FROM node:25-slim
+RUN curl -fsSL https://opencode.ai/install | bash && \
+    install -m 0755 /root/.opencode/bin/opencode /usr/local/bin/opencode
+
+RUN npm install -g @upstash/context7-mcp @modelcontextprotocol/server-sequential-thinking
+
+RUN node --version && \
+    npm --version && \
+    python3 --version && \
+    python3 -m venv /tmp/test-venv && \
+    rm -rf /tmp/test-venv && \
+    opencode --version
+
+COPY scripts/collect-runtime-deps.sh /usr/local/bin/collect-runtime-deps.sh
+RUN chmod 0755 /usr/local/bin/collect-runtime-deps.sh
+
+FROM builder-tools AS collector
 
 ARG USER_UID=1000
 ARG USER_GID=1000
 
-RUN apt-get update && apt-get install --no-install-recommends -y \
-    xvfb \
-    wl-clipboard \
-    xclip \
-    ca-certificates \
-    git \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean \
-    && rm -rf /var/cache/apt/archives/*
+RUN mkdir -p /opt/runtime-rootfs && \
+    /usr/local/bin/collect-runtime-deps.sh /opt/runtime-rootfs \
+      opencode node npm python3 Xvfb xclip wl-copy wl-paste git
 
-COPY --from=builder /usr/local/lib/node_modules /usr/local/lib/node_modules
-COPY --from=builder /usr/local/bin /usr/local/bin
+RUN mkdir -p /opt/runtime-rootfs/app/.local/share /opt/runtime-rootfs/app/.config/opencode /opt/runtime-rootfs/app/.cache && \
+    chown -R ${USER_UID}:${USER_GID} /opt/runtime-rootfs/app && \
+    printf 'opencode:x:%s:%s:OpenCode User:/app:/usr/bin/python3\n' "${USER_UID}" "${USER_GID}" >> /opt/runtime-rootfs/etc/passwd && \
+    printf 'opencode:x:%s:\n' "${USER_GID}" >> /opt/runtime-rootfs/etc/group
 
-RUN usermod -u $USER_UID -o node && \
-    groupmod -g $USER_GID node || true
+FROM gcr.io/distroless/base-debian12 AS final
 
-RUN mkdir -p /app/.local /app/.local/share /app/.config/opencode /app/.cache && \
-    chmod -R 755 /app/.local /app/.config/opencode /app/.cache && \
-    chown -R $USER_UID:$USER_GID /app
+ARG USER_UID=1000
+ARG USER_GID=1000
 
 WORKDIR /app
 
@@ -44,10 +65,11 @@ ENV HOME=/app
 ENV XDG_CONFIG_HOME=/app/.config
 ENV OPENCODE_CONFIG_DIR=/app/.config/opencode
 ENV XDG_DATA_HOME=/app/.local/share
-ENV PATH=/usr/local/bin:$PATH
+ENV PATH=/usr/local/bin:/usr/bin:/bin
 
-COPY --chmod=755 entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY --from=collector /opt/runtime-rootfs/ /
+COPY --chmod=0755 bootstrap.py /usr/local/bin/bootstrap.py
 
-USER node
+USER ${USER_UID}:${USER_GID}
 
-ENTRYPOINT ["entrypoint.sh"]
+ENTRYPOINT ["/usr/bin/python3", "/usr/local/bin/bootstrap.py"]

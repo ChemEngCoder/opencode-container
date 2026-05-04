@@ -1,4 +1,4 @@
-.PHONY: build build-latest run shell clean tag-latest
+.PHONY: build build-latest run shell clean tag-latest build-builder-tools
 
 USER_UID := $(shell id -u)
 USER_GID := $(shell id -g)
@@ -7,6 +7,9 @@ VERSION ?=
 
 build:
 	docker build --build-arg USER_UID=$(USER_UID) --build-arg USER_GID=$(USER_GID) --no-cache -t opencode-docker$(if $(VERSION),:$(VERSION),) .
+
+build-builder-tools:
+	docker build --build-arg USER_UID=$(USER_UID) --build-arg USER_GID=$(USER_GID) --target builder-tools -t opencode-docker:builder-tools .
 
 tag-latest:
 ifndef VERSION
@@ -40,7 +43,7 @@ run:
 		-v $(shell pwd)/secrets:/run/secrets:ro \
 		opencode-docker:latest /workspace
 
-shell:
+shell: build-builder-tools
 	docker run --rm -it \
 		--read-only \
 		--tmpfs /tmp:exec,size=512m \
@@ -56,7 +59,7 @@ shell:
 		-v $(shell pwd)/workspace:/workspace:rw \
 		-v $(shell pwd)/secrets:/run/secrets:ro \
 		--entrypoint /bin/bash \
-		opencode-docker:latest
+		opencode-docker:builder-tools
 
 clean:
 	docker rmi opencode-docker || true
