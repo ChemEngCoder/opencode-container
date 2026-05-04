@@ -387,6 +387,12 @@ for executable_name in "$@"; do
     exit 1
   fi
 
+  # Skip shell builtins — they have no standalone binary to copy
+  if [[ "${executable_path}" != */* ]]; then
+    echo "Skipping shell builtin: ${executable_name}" >&2
+    continue
+  fi
+
   EXECUTABLE_PATHS+=("${executable_path}")
 
   if is_node_tooling_executable_name "${executable_name}" || is_node_tooling_executable_name "$(basename "${executable_path}")"; then
