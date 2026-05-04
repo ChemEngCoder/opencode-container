@@ -1,85 +1,69 @@
 # AGENTS.md
 
-OpenCode Docker - containerized environment for running OpenCode CLI.
+OpenCode Docker — containerized environment for running OpenCode CLI.
 
-## Structure
+## Two usage modes
 
-```
-.
-├── Dockerfile          # Multi-stage build ending in distroless base
-├── Makefile            # Build commands (development use)
-├── bootstrap.py        # Loads secrets, starts Xvfb, runs opencode
-├── bin/opencode-docker # Wrapper script (recommended for regular use)
-├── config/             # Mounted read-only at /app/.config/opencode
-│   ├── opencode.json   # MCP servers and plugin config
-│   └── skills/         # Custom skills (e.g., frontend-design)
-├── secrets/            # Local secrets for development (gitignored)
-├── homebase/           # Local home dir for development (gitignored)
-├── workspace/          # Local workspace for development (gitignored)
-└── superpowers/        # Local superpowers dir for development (gitignored)
-```
+**`bin/opencode-docker`** (recommended for users) — uses `~/.opencode-docker/` for persistence, current dir as workspace.
 
-## Running OpenCode
-
-**Recommended:** Use the wrapper script `bin/opencode-docker`. It:
-- Persists data to `~/.opencode-docker/`
-- Reads secrets from `~/.opencode-docker/secrets/`
-- Uses current directory as workspace
-
-**Development:** `make run` uses local directories (`./homebase`, `./workspace`, `./secrets`).
-
-## Commands
-
-```bash
-make build   # Build image with current user's UID/GID
-make run     # Run container (development, uses local dirs)
-make shell   # Shell into container
-make clean   # Remove image
-```
-
-## Useful shell commands
-
-```bash
-mkdir -p <path>  # Create directory (and parents)
-cat <file>       # Display file contents
-grep <pattern>   # Search file contents
-ls [dir]         # List directory contents
-cp <src> <dst>   # Copy files
-mv <src> <dst>   # Move or rename files
-rm <file>        # Remove files
-chmod <mode> <f> # Change permissions
-wc <file>        # Count lines, words, bytes
-sort <file>      # Sort lines
-cut <opts> <f>   # Extract columns
-env              # Print environment variables
-pwd              # Print working directory
-date             # Display date and time
-dirname <path>   # Get directory part of path
-basename <path>  # Get filename part of path
-```
+**`make run`** (development only) — uses local `./homebase`, `./workspace`, `./secrets`. For working on this repo itself.
 
 ## Secrets
 
-Secrets are file-based, not environment variables. For regular use:
+File-based, not env vars. Files in `/run/secrets` are loaded by `bootstrap.py` and converted to uppercase env vars:
+- `anthropic_api_key` → `ANTHROPIC_API_KEY`
+- Dashes and dots become underscores
 
+Set up:
 ```bash
 mkdir -p ~/.opencode-docker/secrets
 echo "sk-..." > ~/.opencode-docker/secrets/anthropic_api_key
 chmod 600 ~/.opencode-docker/secrets/*
 ```
 
-Bootstrap script converts filenames to uppercase env vars: `anthropic_api_key` → `ANTHROPIC_API_KEY`.
+## Distroless runtime constraints
 
-## Container environment
+Final image is `gcr.io/distroless/base-debian12`:
+- **No `/bin/bash` or `/bin/sh`** — cannot `docker exec` into production container
+- To debug: `make shell` (uses builder-tools stage with bash)
+- Available commands: `mkdir find grep cat head tail sed awk echo ls cp mv rm chmod wc sort cut env pwd date dirname basename`
+- Python 3, Node 24, git, Xvfb also available
 
-- Root filesystem is read-only (`--read-only`)
-- `/tmp` is tmpfs with exec permission
-- Runs as non-root user (UID/GID from build args)
-- Memory: 2GB, CPUs: 2
-- Xvfb starts automatically for clipboard support
+## Build and run
 
-## Config customization
+```bash
+make build                          # Build with auto-detected UID/GID
+make build VERSION=1.3.17           # Build with version tag
+make build-latest                   # Fetch latest opencode version, build and tag
+make run                            # Dev run (uses local dirs)
+make shell                          # Debug shell (builder-tools stage)
+make clean                          # Remove image
+```
 
-Edit `config/opencode.json` to add MCP servers or plugins. Config is mounted read-only in container.
+Build requires `--build-arg USER_UID` and `USER_GID` matching the host user. Makefile auto-detects via `$(shell id -u)` / `$(shell id -g)`.
 
-Custom skills go in `config/skills/<name>/SKILL.md`.
+## Directory structure
+
+| Path | Purpose | Gitignored? |
+|------|---------|-------------|
+| `config/` | opencode.json, custom skills | No (mounted rw in container) |
+| `secrets/` | Local dev secrets | Yes |
+| `homebase/` | Local dev home dir | Yes |
+| `workspace/` | Local dev workspace | Yes |
+| `superpowers/` | Local superpowers dir | Yes |
+| `scripts/collect-runtime-deps.sh` | Collects binary+lib deps for distroless | No |
+| `bootstrap.py` | Container entrypoint: secrets → Xvfb → opencode | No |
+
+## Config
+
+`config/opencode.json` defines MCP servers (context7, sequential-thinking) and loads the superpowers plugin. In the container this is mounted read-only at `/app/.config/opencode`.
+
+Custom skills: `config/skills/<name>/SKILL.md`.
+
+## Container security
+
+Runs with `--read-only`, `--cap-drop=ALL`, `--security-opt=no-new-privileges`, 2GB memory, 2 CPUs. `/tmp` is tmpfs with exec permission (512MB).
+
+## Brainstorming server
+
+Superpowers brainstorming skill runs a local web server. Port is randomized and forwarded via `BRAINSTORM_PORT` env var. Access at `http://localhost:<port>`.
