@@ -37,6 +37,14 @@ make shell   # Shell into container
 make clean   # Remove image
 ```
 
+## Useful shell commands
+
+```bash
+mkdir -p <path>  # Create directory (and parents)
+cat <file>       # Display file contents
+grep <pattern>   # Search file contents
+```
+
 ## Secrets
 
 Secrets are file-based, not environment variables. For regular use:
