@@ -46,7 +46,9 @@ ARG USER_GID=1000
 
 RUN mkdir -p /opt/runtime-rootfs && \
     /usr/local/bin/collect-runtime-deps.sh /opt/runtime-rootfs \
-      opencode node npm python3 Xvfb xclip wl-copy wl-paste git mkdir find grep cat head tail sed awk echo
+      opencode node npm python3 Xvfb xclip wl-copy wl-paste git \
+      mkdir find grep cat head tail sed awk echo \
+      ls cp mv rm chmod wc sort cut env pwd date dirname basename
 
 RUN mkdir -p /opt/runtime-rootfs/app/.local/share /opt/runtime-rootfs/app/.config/opencode /opt/runtime-rootfs/app/.cache && \
     chown -R ${USER_UID}:${USER_GID} /opt/runtime-rootfs/app && \

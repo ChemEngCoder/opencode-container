@@ -43,6 +43,19 @@ make clean   # Remove image
 mkdir -p <path>  # Create directory (and parents)
 cat <file>       # Display file contents
 grep <pattern>   # Search file contents
+ls [dir]         # List directory contents
+cp <src> <dst>   # Copy files
+mv <src> <dst>   # Move or rename files
+rm <file>        # Remove files
+chmod <mode> <f> # Change permissions
+wc <file>        # Count lines, words, bytes
+sort <file>      # Sort lines
+cut <opts> <f>   # Extract columns
+env              # Print environment variables
+pwd              # Print working directory
+date             # Display date and time
+dirname <path>   # Get directory part of path
+basename <path>  # Get filename part of path
 ```
 
 ## Secrets
