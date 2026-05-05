@@ -6,6 +6,7 @@
 # Options:
 #   -b, --brainstorm    Enable brainstorming server (exposes port for real-time collaboration)
 #   -w, --websearch     Enable web search (sets OPENCODE_ENABLE_EXA=1)
+#   -e, --experimental  Enable experimental features (sets OPENCODE_EXPERIMENTAL=1 and OPENCODE_ENABLE_EXPERIMENTAL_MODELS=1)
 
 set -e
 
@@ -52,6 +53,11 @@ while [[ $# -gt 0 ]]; do
             ;;
         -w|--websearch)
             EXTRA_ENV+=("-e OPENCODE_ENABLE_EXA=1")
+            shift
+            ;;
+        -e|--experimental)
+            EXTRA_ENV+=("-e OPENCODE_EXPERIMENTAL=1")
+            EXTRA_ENV+=("-e OPENCODE_ENABLE_EXPERIMENTAL_MODELS=1")
             shift
             ;;
         *)
