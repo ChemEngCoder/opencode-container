@@ -5,6 +5,7 @@
 #
 # Options:
 #   -b, --brainstorm    Enable brainstorming server (exposes port for real-time collaboration)
+#   -w, --websearch     Enable web search (sets OPENCODE_ENABLE_EXA=1)
 
 set -e
 
@@ -39,6 +40,7 @@ WORKSPACE="${OPENCODE_WORKSPACE:-$(pwd)}"
 BRAINSTORM_PORT=""
 BRAINSTORM_HOST=""
 PORT_MAPPING=""
+EXTRA_ENV=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -46,6 +48,10 @@ while [[ $# -gt 0 ]]; do
             BRAINSTORM_PORT=$((49152 + RANDOM % 16383))
             BRAINSTORM_HOST="0.0.0.0"
             PORT_MAPPING="-p ${BRAINSTORM_PORT}:${BRAINSTORM_PORT}"
+            shift
+            ;;
+        -w|--websearch)
+            EXTRA_ENV+=("-e OPENCODE_ENABLE_EXA=1")
             shift
             ;;
         *)
@@ -75,6 +81,7 @@ docker run --rm $DOCKER_FLAGS \
     ${PORT_MAPPING} \
     ${BRAINSTORM_PORT:+-e BRAINSTORM_PORT="${BRAINSTORM_PORT}"} \
     ${BRAINSTORM_HOST:+-e BRAINSTORM_HOST="${BRAINSTORM_HOST}"} \
+    "${EXTRA_ENV[@]}" \
     -v "$HOME/.opencode-docker:/app:rw" \
     "${GITCONFIG_MOUNT[@]}" \
     -v "$HOME/.opencode-docker/config:/app/.config/opencode:rw" \
