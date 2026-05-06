@@ -151,7 +151,9 @@ When using `make run` (development only):
 
 The [Superpowers](https://github.com/obra/superpowers) plugin includes a visual brainstorming companion that serves mockups, diagrams, and design options in your browser.
 
-The server port is pre-configured (default: 42000) via `BRAINSTORM_PORT` environment variable in `bin/opencode-docker` and `make run`/`make shell`. When the brainstorming skill starts, access it at `http://localhost:42000`.
+To enable the brainstorming server, use the `-b` or `--brainstorm` flag when running `bin/opencode-docker`. The port is randomly assigned in the range 49152-65535 and will be displayed when the brainstorming skill starts. Access it at the URL shown (e.g., `http://localhost:XXXXX`).
+
+For development with `make run` or `make shell`, the port is pre-configured to 42000 via the `BRAINSTORM_PORT` environment variable.
 
 ## Advanced Usage
 
