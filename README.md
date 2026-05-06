@@ -1,6 +1,6 @@
 # OpenCode Docker
 
-This repository provides a Dockerized environment for running the [OpenCode](https://opencode.ai) CLI in an isolated container. It includes all necessary dependencies for clipboard support and headless execution.
+A security-hardened Docker environment for running the [OpenCode](https://opencode.ai) CLI in complete isolation. Features a read-only container with dropped Linux capabilities (principle of least privilege), seccomp profile preventing privilege escalation, and file-based secrets management.
 
 ## Star History
 
@@ -77,169 +77,21 @@ opencode-docker -s ses_2d068fdfaffefxNTts5doK0upT
 OPENCODE_WORKSPACE=/path/to/project opencode-docker
 ```
 
-### Data Persistence
-
-When using the wrapper script, all persistent data is stored in `~/.opencode-docker/`:
-
-```
-~/.opencode-docker/
-├── .cache/           # OpenCode cache (plugins, packages)
-├── .local/           # Local state and data
-├── secrets/          # API keys (see Secrets Management below)
-└── ...               # Other OpenCode runtime files
-```
-
-This directory is automatically created on first run.
-
-## Runtime Model
-
-The production image is a multi-stage build with a distroless runtime:
-
-- **Final runtime image:** `gcr.io/distroless/base-debian12`
-- **Node.js:** NodeSource Node 24 packages installed in the build stage and copied with runtime deps
-- **Python:** Debian 12 packages (`python3`, including `python3-venv`) installed in the build stage and copied with runtime deps
-- **OpenCode:** installed in the build stage via the official `curl https://opencode.ai/install | bash` installer
-- **Container startup:** `bootstrap.py` (Python) loads file-based secrets from `/run/secrets`, starts Xvfb, then `exec`s `opencode`
-
-Because the final image is distroless, it does not include an interactive shell like `/bin/bash`.
-
-## Makefile
-
-The Makefile is primarily for development and testing within this repository:
-
-```bash
-make build                      # Build with auto-detected UID/GID (tagged as opencode-docker)
-make build VERSION=1.3.17       # Build with version tag (opencode-docker:1.3.17)
-make build-latest               # Auto-discover latest opencode-ai version, build & tag as latest
-make tag-latest VERSION=1.3.17  # Tag latest to point to a version
-make run                        # Run container (uses ./workspace as working dir)
-make shell                      # Shell into builder-tools stage (bash available)
-make clean                      # Remove image
-```
-
-**Note:** `make run` uses local directories (`./homebase`, `./workspace`, `./secrets`) for development. For regular use, prefer the `bin/opencode-docker` wrapper script which uses `~/.opencode-docker/`.
-
-## Manual Docker Run
-
-For advanced users who want to run the container manually:
-
-```bash
-docker run --rm -it \
-  --read-only \
-  --tmpfs /tmp:exec,size=512m \
-  --cap-drop ALL \
-  --security-opt=no-new-privileges \
-  --memory=2g \
-  --cpus=2 \
-  -v ~/.opencode-docker:/app:rw \
-  -v /path/to/opencode-docker/config:/app/.config/opencode:rw \
-  -v $(pwd):/workspace:rw \
-  -v ~/.opencode-docker/secrets:/run/secrets:ro \
-  opencode-docker /workspace
-```
-
-### Building the Image Manually
-
-```bash
-# Default UID/GID (1000)
-docker build -t opencode-docker .
-
-# With custom UID/GID (recommended)
-docker build --build-arg USER_UID=$(id -u) --build-arg USER_GID=$(id -g) -t opencode-docker .
-
-# With version tag
-docker build --build-arg USER_UID=$(id -u) --build-arg USER_GID=$(id -g) -t opencode-docker:1.3.17 .
-```
-
 ## Security Features
 
-This container is configured with multiple layers of security hardening:
+This container implements defense-in-depth with multiple security layers:
 
-- **Read-only root filesystem:** Prevents any persistence or tampering inside the container
-- **Dropped capabilities:** Only the minimum required capabilities
-- **No new privileges:** Prevents privilege escalation via setuid/suid binaries
-- **Unprivileged user:** Runs as UID 1000 by default (configurable at build time)
-- **Memory/CPU limits:** Configurable to prevent resource exhaustion
-- **tmpfs for /tmp:** Ensures /tmp is writable but memory-backed
-
-### Docker Options Explained
-
-#### Container Lifecycle
-
-| Option | Description |
-|--------|-------------|
-| `--rm` | Automatically removes the container when it exits. Prevents accumulation of stopped containers that could contain sensitive data. |
-| `-it` | Interactive terminal (`-i` = interactive, `-t` = TTY). Allows you to interact with the CLI. |
-
-#### Filesystem Security
-
-| Option | Description |
-|--------|-------------|
-| `--read-only` | Makes the container's root filesystem read-only. Prevents malware or exploits from modifying system binaries or installing persistence mechanisms. |
-| `--tmpfs /tmp:exec,size=512m` | Creates a writable tmpfs (RAM-based) mount at `/tmp` with execute permission and 512MB limit. Provides a controlled writable area that's ephemeral (disappears when container stops) and size-limited to prevent resource exhaustion. |
-
-#### Capability & Privilege Restriction
-
-| Option | Description |
-|--------|-------------|
-| `--cap-drop ALL` | Drops all Linux capabilities. By default, containers get a subset of root capabilities. Dropping all removes abilities like changing file ownership, binding to privileged ports, loading kernel modules, etc. |
-| `--security-opt no-new-privileges` | Prevents the container process and its children from gaining new privileges via setuid binaries or suid executables. This blocks privilege escalation attacks even if the container is compromised, ensuring the container cannot escape its restricted permissions. |
-
-#### Resource Limits
-
-| Option | Description |
-|--------|-------------|
-| `--memory=2g` | Limits container memory to 2GB. Prevents denial-of-service through memory exhaustion (fork bombs, memory leaks). |
-| `--cpus=2` | Limits container to 2 CPU cores. Prevents CPU exhaustion attacks and ensures the container can't monopolize host resources. |
-
-#### Volume Mounts
-
-| Option | Description |
-|--------|-------------|
-| `-v .../homebase:/app:rw` | Mounts homebase as read-write home directory. Isolates persistent data; container only has access to this specific directory. |
-| `-v .../config:/app/.config/opencode:rw` | Mounts config as read-write. Allows OpenCode to persist MCP server configurations, custom skills, and other settings. The config directory is initialized from the repository and persisted in the user's home directory for persistence. |
-| `-v .../workspace:/workspace:rw` | Mounts workspace as read-write. Limits file access to only the intended working directory. |
-
-#### Environment Variables
-
-| Option | Description |
-|--------|-------------|
-| `-e VAR=value` | Passes environment variables into the container. Note: Credentials passed this way are visible in `docker inspect` and process listings. Consider using Docker secrets for sensitive values. |
-
-### Security Considerations
-
-**Strong points:**
-- `--read-only` + `--tmpfs` implements the immutable infrastructure pattern
-- `--cap-drop ALL` follows the principle of least privilege
-- Resource limits prevent denial-of-service attacks
-- Config and workspace mounts are scoped to explicit host paths
-
-## Configuration and Persistence
-
-When using the wrapper script (`bin/opencode-docker`):
-
-| Data | Location | Description |
-|------|----------|-------------|
-| **Home Directory** | `~/.opencode-docker/` | Persistent home for OpenCode (cache, plugins, settings) |
-| **Secrets** | `~/.opencode-docker/secrets/` | API keys (see below) |
-| **Config** | `./config/` (this repo) | OpenCode config, mounted read-write |
-| **Workspace** | Current directory | Your project files, mounted read-write |
-
-When using `make run` (for development):
-
-| Data | Location | Description |
-|------|----------|-------------|
-| **Home Directory** | `./homebase/` | Local persistent home |
-| **Secrets** | `./secrets/` | Local secrets directory |
-| **Config** | `./config/` | OpenCode config |
-| **Workspace** | `./workspace/` | Local workspace |
+- **Complete isolation:** Distroless base image with no shell or package manager
+- **Read-only filesystem:** Root filesystem is immutable; only `/tmp` (tmpfs) and mounted volumes are writable
+- **Dropped capabilities:** `--cap-drop ALL` removes all Linux capabilities (principle of least privilege)
+- **Privilege escalation prevention:** `--security-opt no-new-privileges` blocks setuid/setgid exploits
+- **Unprivileged user:** Runs as non-root UID 1000 (configurable at build time)
+- **Resource limits:** Memory (2GB) and CPU (2 cores) constraints prevent resource exhaustion
+- **File-based secrets:** Secrets loaded from files (not environment variables) to avoid exposure in process listings or logs
 
 ## Secrets Management
 
-This project uses file-based secrets instead of environment variables for improved security. Secrets stored in files are:
-- Not visible in `docker inspect`
-- Not exposed in process listings
-- Not leaked in error messages or logs
+This project uses file-based secrets instead of environment variables for improved security. Secrets stored in files are not visible in `docker inspect`, process listings, error messages, or logs.
 
 ### Setting Up Secrets
 
@@ -257,8 +109,6 @@ This project uses file-based secrets instead of environment variables for improv
    chmod 600 ~/.opencode-docker/secrets/*
    ```
 
-   The wrapper does not auto-create placeholder secret files.
-
 3. The runtime bootstrap (`bootstrap.py`) automatically loads all files from `/run/secrets` as environment variables:
    - Filenames are converted to uppercase
    - Dashes and dots are replaced with underscores
@@ -275,32 +125,86 @@ This project uses file-based secrets instead of environment variables for improv
 | `aws_access_key_id` | `AWS_ACCESS_KEY_ID` | AWS Bedrock |
 | `aws_secret_access_key` | `AWS_SECRET_ACCESS_KEY` | AWS Bedrock |
 
-## Environment Variables (Legacy)
+**Note:** Environment variables can still be passed directly if needed, but file-based secrets are strongly recommended for security.
 
-You can still pass environment variables directly if preferred, but file-based secrets are recommended:
+## Data Persistence & Configuration
 
-- `ANTHROPIC_API_KEY`
-- `OPENAI_API_KEY`
-- `CONTEXT7_API_KEY` (for Context7 MCP)
-- `GOOGLE_APPLICATION_CREDENTIALS` (for Vertex AI)
-- `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (for Bedrock)
+When using the wrapper script (`bin/opencode-docker`):
+
+| Data | Location | Description |
+|------|----------|-------------|
+| **Home Directory** | `~/.opencode-docker/` | OpenCode cache, plugins, settings, sessions |
+| **Secrets** | `~/.opencode-docker/secrets/` | API keys and credentials |
+| **Config** | `./config/` (this repo) | OpenCode configuration, MCP servers, custom skills |
+| **Workspace** | Current directory | Your project files |
+
+When using `make run` (development only):
+
+| Data | Location | Description |
+|------|----------|-------------|
+| **Home Directory** | `./homebase/` | Local persistent home |
+| **Secrets** | `./secrets/` | Local secrets |
+| **Config** | `./config/` | OpenCode config |
+| **Workspace** | `./workspace/` | Local workspace |
 
 ## Superpowers Visual Companion
 
-The [Superpowers](https://github.com/obra/superpowers) plugin includes a visual brainstorming companion that runs a local web server for showing mockups, diagrams, and design options in your browser.
+The [Superpowers](https://github.com/obra/superpowers) plugin includes a visual brainstorming companion that serves mockups, diagrams, and design options in your browser.
 
-### Port Configuration
+The server port is pre-configured (default: 42000) via `BRAINSTORM_PORT` environment variable in `bin/opencode-docker` and `make run`/`make shell`. When the brainstorming skill starts, access it at `http://localhost:42000`.
 
-The visual companion server is exposed on a random port by default. This port is:
+## Advanced Usage
 
-- Pre-configured in `bin/opencode-docker` and `make run`/`make shell`
-- Set via the `BRAINSTORM_PORT=42000` environment variable
-- Forwarded from the container to your host machine
+### Development Commands
 
-### Usage
-
-When the Superpowers brainstorming skill starts a server, it will use a random port. Access it at:
-
+```bash
+make build                      # Build with auto-detected UID/GID
+make build VERSION=1.3.17       # Build with specific version tag
+make build-latest               # Build latest OpenCode version
+make tag-latest VERSION=1.3.17  # Tag a version as latest
+make run                        # Dev run (uses ./homebase, ./workspace, ./secrets)
+make shell                      # Debug shell (builder-tools stage with bash)
+make clean                      # Remove image
 ```
-http://localhost:<port>
+
+### Manual Docker Run
+
+For advanced users who need custom container configuration:
+
+```bash
+docker run --rm -it \
+  --read-only \
+  --tmpfs /tmp:exec,size=512m \
+  --cap-drop ALL \
+  --security-opt=no-new-privileges \
+  --memory=2g \
+  --cpus=2 \
+  -v ~/.opencode-docker:/app:rw \
+  -v /path/to/opencode-docker/config:/app/.config/opencode:rw \
+  -v $(pwd):/workspace:rw \
+  -v ~/.opencode-docker/secrets:/run/secrets:ro \
+  opencode-docker /workspace
 ```
+
+### Building Manually
+
+```bash
+# Default UID/GID (1000)
+docker build -t opencode-docker .
+
+# With custom UID/GID (recommended)
+docker build --build-arg USER_UID=$(id -u) --build-arg USER_GID=$(id -g) -t opencode-docker .
+
+# With version tag
+docker build --build-arg USER_UID=$(id -u) --build-arg USER_GID=$(id -g) -t opencode-docker:1.3.17 .
+```
+
+### Runtime Details
+
+The image uses a multi-stage build with distroless runtime:
+
+- **Base:** `gcr.io/distroless/base-debian12` (no shell, no package manager)
+- **Node.js:** Node 24 from NodeSource, runtime dependencies extracted via `collect-runtime-deps.sh`
+- **Python:** Python 3 with venv support from Debian 12
+- **OpenCode:** Installed via official installer in build stage
+- **Bootstrap:** `bootstrap.py` loads secrets from `/run/secrets`, starts Xvfb, then execs OpenCode
