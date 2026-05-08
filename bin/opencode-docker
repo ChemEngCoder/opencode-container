@@ -25,11 +25,14 @@ bootstrap() {
     chmod 700 "$ocd_dir/secrets"
 
     if [ -d "$repo_dir/config" ]; then
-        cp -a "$repo_dir/config/." "$ocd_dir/config/"
-    fi
-
-    if [ ! -f "$HOME/.gitconfig" ] && [ -f "$repo_dir/.gitconfig" ]; then
-        cp "$repo_dir/.gitconfig" "$HOME/.gitconfig"
+        shopt -s dotglob nullglob
+        for source_path in "$repo_dir/config"/*; do
+            target_path="$ocd_dir/config/$(basename "$source_path")"
+            if [ ! -e "$target_path" ]; then
+                cp -a "$source_path" "$target_path"
+            fi
+        done
+        shopt -u dotglob nullglob
     fi
 }
 
@@ -37,6 +40,11 @@ bootstrap
 
 # Default workspace to current directory if not specified
 WORKSPACE="${OPENCODE_WORKSPACE:-$(pwd)}"
+
+if [ ! -d "$WORKSPACE" ]; then
+    echo "Error: workspace path is not an existing directory: $WORKSPACE" >&2
+    exit 1
+fi
 
 BRAINSTORM_PORT=""
 BRAINSTORM_HOST=""
