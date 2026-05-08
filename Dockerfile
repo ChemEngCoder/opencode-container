@@ -1,4 +1,4 @@
-FROM debian:12-slim AS builder-tools
+FROM debian:13-slim AS builder-tools
 
 ARG USER_UID=1000
 ARG USER_GID=1000
@@ -50,12 +50,24 @@ RUN mkdir -p /opt/runtime-rootfs && \
       mkdir find grep cat head tail sed awk \
       ls cp mv rm chmod wc sort cut env date dirname basename
 
+RUN cd /opt/runtime-rootfs && \
+    for dir in bin sbin lib lib64; do \
+      if [ -d "${dir}" ] && [ ! -L "${dir}" ]; then \
+        mkdir -p "usr/${dir}"; \
+        if [ -n "$(ls -A "${dir}" 2>/dev/null)" ]; then \
+          cp -a "${dir}"/. "usr/${dir}"/; \
+        fi; \
+        rm -rf "${dir}"; \
+        ln -s "usr/${dir}" "${dir}"; \
+      fi; \
+    done
+
 RUN mkdir -p /opt/runtime-rootfs/app/.local/share /opt/runtime-rootfs/app/.config/opencode /opt/runtime-rootfs/app/.cache && \
     chown -R ${USER_UID}:${USER_GID} /opt/runtime-rootfs/app && \
     printf 'opencode:x:%s:%s:OpenCode User:/app:/usr/bin/python3\n' "${USER_UID}" "${USER_GID}" >> /opt/runtime-rootfs/etc/passwd && \
     printf 'opencode:x:%s:\n' "${USER_GID}" >> /opt/runtime-rootfs/etc/group
 
-FROM gcr.io/distroless/base-debian12 AS final
+FROM gcr.io/distroless/base-debian13 AS final
 
 ARG USER_UID=1000
 ARG USER_GID=1000
@@ -67,7 +79,7 @@ ENV HOME=/app
 ENV XDG_CONFIG_HOME=/app/.config
 ENV OPENCODE_CONFIG_DIR=/app/.config/opencode
 ENV XDG_DATA_HOME=/app/.local/share
-ENV PATH=/usr/local/bin:/usr/bin:/bin
+ENV PATH=/usr/local/bin:/usr/bin
 
 COPY --from=collector /opt/runtime-rootfs/ /
 COPY --chmod=0755 bootstrap.py /usr/local/bin/bootstrap.py
