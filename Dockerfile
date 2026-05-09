@@ -3,6 +3,7 @@ FROM debian:12-slim AS builder-tools
 ARG USER_UID=1000
 ARG USER_GID=1000
 ARG NODE_MAJOR=24
+ARG OPENCODE_VERSION=unknown
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -24,7 +25,8 @@ RUN mkdir -p /etc/apt/keyrings && \
     apt-get update && apt-get install --no-install-recommends -y nodejs && \
     rm -rf /var/lib/apt/lists/*
 
-RUN curl -fsSL https://opencode.ai/install | bash && \
+RUN echo "Installing OpenCode (version hint: ${OPENCODE_VERSION})" && \
+    curl -fsSL https://opencode.ai/install | bash && \
     install -m 0755 /root/.opencode/bin/opencode /usr/local/bin/opencode
 
 RUN npm install -g @upstash/context7-mcp @modelcontextprotocol/server-sequential-thinking

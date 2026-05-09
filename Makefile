@@ -10,10 +10,10 @@ COMMON_BRAINSTORM_FLAGS := -p $(BRAINSTORM_PORT):$(BRAINSTORM_PORT) -e BRAINSTOR
 COMMON_VOLUME_FLAGS := -v $(shell pwd)/homebase:/app:rw -v $(shell pwd)/config:/app/.config/opencode:rw -v $(shell pwd)/workspace:/workspace:rw -v $(shell pwd)/secrets:/run/secrets:ro
 
 build:
-	docker build --build-arg USER_UID=$(USER_UID) --build-arg USER_GID=$(USER_GID) -t opencode-docker$(if $(VERSION),:$(VERSION),) .
+	docker build --build-arg USER_UID=$(USER_UID) --build-arg USER_GID=$(USER_GID) $(if $(VERSION),--build-arg OPENCODE_VERSION=$(VERSION),) -t opencode-docker$(if $(VERSION),:$(VERSION),) .
 
 build-builder-tools:
-	docker build --build-arg USER_UID=$(USER_UID) --build-arg USER_GID=$(USER_GID) --target builder-tools -t opencode-docker:builder-tools .
+	docker build --build-arg USER_UID=$(USER_UID) --build-arg USER_GID=$(USER_GID) $(if $(VERSION),--build-arg OPENCODE_VERSION=$(VERSION),) --target builder-tools -t opencode-docker:builder-tools .
 
 tag-latest:
 ifndef VERSION
