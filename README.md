@@ -207,7 +207,7 @@ docker build --build-arg USER_UID=$(id -u) --build-arg USER_GID=$(id -g) -t open
 
 The image uses a multi-stage build with distroless runtime:
 
-- **Base:** `gcr.io/distroless/base-debian12` (no shell, no package manager)
+- **Base:** `gcr.io/distroless/base-debian13` (no shell, no package manager)
 - **Node.js:** Node 24 from NodeSource, runtime dependencies extracted via `collect-runtime-deps.sh`
 - **Python:** Python 3 with venv support from Debian 12
 - **OpenCode:** Installed via official installer in build stage
