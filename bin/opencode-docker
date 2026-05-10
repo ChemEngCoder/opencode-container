@@ -7,6 +7,8 @@
 #   -b, --brainstorm    Enable brainstorming server (exposes port for real-time collaboration)
 #   -w, --websearch     Enable web search (sets OPENCODE_ENABLE_EXA=1)
 #   -e, --experimental  Enable experimental features (sets OPENCODE_EXPERIMENTAL=1 and OPENCODE_ENABLE_EXPERIMENTAL_MODELS=1)
+#   -m, --memory        Set memory limit (default: 4g, e.g., -m 8g)
+#   -c, --cpus          Set CPU count (default: 4, e.g., -c 8)
 
 set -e
 
@@ -50,6 +52,8 @@ BRAINSTORM_PORT=""
 BRAINSTORM_HOST=""
 PORT_MAPPING=""
 EXTRA_ENV=()
+MEMORY_LIMIT="${MEMORY_LIMIT:-4g}"
+CPU_LIMIT="${CPU_LIMIT:-4}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -67,6 +71,14 @@ while [[ $# -gt 0 ]]; do
             EXTRA_ENV+=("-e OPENCODE_EXPERIMENTAL=1")
             EXTRA_ENV+=("-e OPENCODE_ENABLE_EXPERIMENTAL_MODELS=1")
             shift
+            ;;
+        -m|--memory)
+            MEMORY_LIMIT="$2"
+            shift 2
+            ;;
+        -c|--cpus)
+            CPU_LIMIT="$2"
+            shift 2
             ;;
         *)
             break
@@ -90,8 +102,8 @@ docker run --rm $DOCKER_FLAGS \
     --tmpfs /tmp:exec,size=512m \
     --cap-drop=ALL \
     --security-opt=no-new-privileges \
-    --memory=2g \
-    --cpus=2 \
+    --memory="${MEMORY_LIMIT}" \
+    --cpus="${CPU_LIMIT}" \
     ${PORT_MAPPING} \
     ${BRAINSTORM_PORT:+-e BRAINSTORM_PORT="${BRAINSTORM_PORT}"} \
     ${BRAINSTORM_HOST:+-e BRAINSTORM_HOST="${BRAINSTORM_HOST}"} \
