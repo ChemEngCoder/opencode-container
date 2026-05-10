@@ -67,3 +67,14 @@ Runs with `--read-only`, `--cap-drop=ALL`, `--security-opt=no-new-privileges`, 2
 ## Brainstorming server
 
 Superpowers brainstorming skill runs a local web server. Port is randomized and forwarded via `BRAINSTORM_PORT` env var. Access at `http://localhost:<port>`.
+
+## Commit messages
+
+Use conventional commits for persistent, searchable history:
+- `feat:` new feature
+- `fix:` bug fix
+- `docs:` documentation only
+- `chore:` maintenance, refactoring, build changes
+- `refactor:` code change that neither fixes nor adds
+
+Format: `type: short description` (under 72 chars). Example: `feat: add -w/--websearch flag to enable Exa web search`
