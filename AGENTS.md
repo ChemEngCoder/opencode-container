@@ -26,7 +26,7 @@ chmod 600 ~/.opencode-docker/secrets/*
 Final image is `gcr.io/distroless/base-debian13`:
 - **No `/bin/bash` or `/bin/sh`** — cannot `docker exec` into production container
 - To debug: `make shell` (uses builder-tools stage with bash)
-- Available commands: `mkdir find grep cat head tail sed awk echo ls cp mv rm chmod wc sort cut env pwd date dirname basename`
+- Available commands: `mkdir find grep rg jq cat head tail sed awk echo ls cp mv rm chmod wc sort cut env pwd date dirname basename`
 - Python 3, Node 24, git, Xvfb also available
 
 ## Build and run
