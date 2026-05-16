@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
     xvfb \
     xclip \
     wl-clipboard \
+    ripgrep \
     && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /etc/apt/keyrings && \
@@ -49,7 +50,7 @@ ARG USER_GID=1000
 RUN mkdir -p /opt/runtime-rootfs && \
     /usr/local/bin/collect-runtime-deps.sh /opt/runtime-rootfs \
       opencode node npm python3 Xvfb xclip wl-copy wl-paste git \
-      mkdir find grep cat head tail sed awk \
+      mkdir find grep rg cat head tail sed awk \
       ls cp mv rm chmod wc sort cut env date dirname basename
 
 RUN cd /opt/runtime-rootfs && \
