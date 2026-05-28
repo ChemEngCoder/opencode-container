@@ -4,7 +4,6 @@
 # Add this directory to your PATH to run the Docker isolated OpenCode from anywhere
 #
 # Options:
-#   -b, --brainstorm    Enable brainstorming server (exposes port for real-time collaboration)
 #   -w, --websearch     Enable web search (sets OPENCODE_ENABLE_EXA=1)
 #   -e, --experimental  Enable experimental features (sets OPENCODE_EXPERIMENTAL=1 and OPENCODE_ENABLE_EXPERIMENTAL_MODELS=1)
 #   -m, --memory        Set memory limit (default: 4g, e.g., -m 8g)
@@ -48,21 +47,12 @@ if [ ! -d "$WORKSPACE" ]; then
     exit 1
 fi
 
-BRAINSTORM_PORT=""
-BRAINSTORM_HOST=""
-PORT_MAPPING=""
 EXTRA_ENV=()
 MEMORY_LIMIT="${MEMORY_LIMIT:-4g}"
 CPU_LIMIT="${CPU_LIMIT:-4}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        -b|--brainstorm)
-            BRAINSTORM_PORT=$((49152 + RANDOM % 16383))
-            BRAINSTORM_HOST="0.0.0.0"
-            PORT_MAPPING="-p ${BRAINSTORM_PORT}:${BRAINSTORM_PORT}"
-            shift
-            ;;
         -w|--websearch)
             EXTRA_ENV+=("-e OPENCODE_ENABLE_EXA=1")
             shift
@@ -104,9 +94,6 @@ docker run --rm $DOCKER_FLAGS \
     --security-opt=no-new-privileges \
     --memory="${MEMORY_LIMIT}" \
     --cpus="${CPU_LIMIT}" \
-    ${PORT_MAPPING} \
-    ${BRAINSTORM_PORT:+-e BRAINSTORM_PORT="${BRAINSTORM_PORT}"} \
-    ${BRAINSTORM_HOST:+-e BRAINSTORM_HOST="${BRAINSTORM_HOST}"} \
     "${EXTRA_ENV[@]}" \
     -v "$HOME/.opencode-docker:/app:rw" \
     "${GITCONFIG_MOUNT[@]}" \

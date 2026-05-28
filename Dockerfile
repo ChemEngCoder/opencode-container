@@ -1,9 +1,9 @@
-FROM debian:13-slim AS builder-tools
+FROM debian:13-slim@sha256:b6e2a152f22a40ff69d92cb397223c906017e1391a73c952b588e51af8883bf8 AS builder-tools
 
 ARG USER_UID=1000
 ARG USER_GID=1000
 ARG NODE_MAJOR=24
-ARG OPENCODE_VERSION=unknown
+ARG OPENCODE_VERSION=1.15.12
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -27,11 +27,14 @@ RUN mkdir -p /etc/apt/keyrings && \
     apt-get update && apt-get install --no-install-recommends -y nodejs && \
     rm -rf /var/lib/apt/lists/*
 
-RUN echo "Installing OpenCode (version hint: ${OPENCODE_VERSION})" && \
-    curl -fsSL https://opencode.ai/install | bash && \
+RUN echo "Installing OpenCode version: ${OPENCODE_VERSION}" && \
+    curl -fsSL https://opencode.ai/install -o /tmp/install-opencode.sh && \
+    echo "fc3c1b2123f49b6df545a7622e5127d21cd794b15134fc3b66e1ca49f7fb297e  /tmp/install-opencode.sh" | sha256sum -c - && \
+    bash /tmp/install-opencode.sh --version "${OPENCODE_VERSION}" --no-modify-path && \
+    rm -f /tmp/install-opencode.sh && \
     install -m 0755 /root/.opencode/bin/opencode /usr/local/bin/opencode
 
-RUN npm install -g @upstash/context7-mcp @modelcontextprotocol/server-sequential-thinking
+RUN npm install -g @upstash/context7-mcp@1.0.17
 
 RUN node --version && \
     npm --version && \
@@ -71,6 +74,7 @@ RUN mkdir -p /opt/runtime-rootfs/app/.local/share /opt/runtime-rootfs/app/.confi
     printf 'opencode:x:%s:%s:OpenCode User:/app:/usr/bin/python3\n' "${USER_UID}" "${USER_GID}" >> /opt/runtime-rootfs/etc/passwd && \
     printf 'opencode:x:%s:\n' "${USER_GID}" >> /opt/runtime-rootfs/etc/group
 
+# TODO: Pin to SHA256 digest once available: gcr.io/distroless/base-debian13@sha256:<digest>
 FROM gcr.io/distroless/base-debian13 AS final
 
 ARG USER_UID=1000

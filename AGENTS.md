@@ -56,17 +56,13 @@ Build requires `--build-arg USER_UID` and `USER_GID` matching the host user. Mak
 
 ## Config
 
-`config/opencode.json` defines MCP servers (context7, sequential-thinking) and loads the superpowers plugin. In the container this is mounted read-only at `/app/.config/opencode`.
+`config/opencode.json` defines MCP servers (context7) and loads the superpowers plugin. In the container this is mounted read-only at `/app/.config/opencode`.
 
 Custom skills: `config/skills/<name>/SKILL.md`.
 
 ## Container security
 
 Runs with `--read-only`, `--cap-drop=ALL`, `--security-opt=no-new-privileges`, 2GB memory, 2 CPUs. `/tmp` is tmpfs with exec permission (512MB).
-
-## Brainstorming server
-
-Superpowers brainstorming skill runs a local web server. Port is randomized and forwarded via `BRAINSTORM_PORT` env var. Access at `http://localhost:<port>`.
 
 ## Commit messages
 
