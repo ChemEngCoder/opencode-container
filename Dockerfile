@@ -19,6 +19,8 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
     wl-clipboard \
     ripgrep \
     jq \
+    rustc \
+    cargo \
     && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /etc/apt/keyrings && \
@@ -55,7 +57,8 @@ RUN mkdir -p /opt/runtime-rootfs && \
     /usr/local/bin/collect-runtime-deps.sh /opt/runtime-rootfs \
       opencode node npm python3 Xvfb xclip wl-copy wl-paste git \
       mkdir find grep rg jq cat head tail sed awk \
-      ls cp mv rm chmod wc sort cut env date dirname basename
+      ls cp mv rm chmod wc sort cut env date dirname basename \
+      rustc cargo
 
 RUN cd /opt/runtime-rootfs && \
     for dir in bin sbin lib lib64; do \
