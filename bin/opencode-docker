@@ -6,11 +6,13 @@
 # Options:
 #   -w, --websearch     Enable web search (sets OPENCODE_ENABLE_EXA=1)
 #   -e, --experimental  Enable experimental features (sets OPENCODE_EXPERIMENTAL=1 and OPENCODE_ENABLE_EXPERIMENTAL_MODELS=1)
+#   -u, --update-config Overwrite ~/.opencode-docker/config/ files with repo versions
 #   -m, --memory        Set memory limit (default: 4g, e.g., -m 8g)
 #   -c, --cpus          Set CPU count (default: 4, e.g., -c 8)
 
 set -e
 
+UPDATE_CONFIG=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 bootstrap() {
@@ -31,6 +33,9 @@ bootstrap() {
             target_path="$ocd_dir/config/$(basename "$source_path")"
             if [ ! -e "$target_path" ]; then
                 cp -a "$source_path" "$target_path"
+            elif [ "$UPDATE_CONFIG" = 1 ]; then
+                cp -a "$source_path" "$target_path"
+                echo "→ Updated $(basename "$source_path")"
             fi
         done
         shopt -u dotglob nullglob
@@ -53,6 +58,10 @@ CPU_LIMIT="${CPU_LIMIT:-4}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        -u|--update-config)
+            UPDATE_CONFIG=1
+            shift
+            ;;
         -w|--websearch)
             EXTRA_ENV+=("-e OPENCODE_ENABLE_EXA=1")
             shift

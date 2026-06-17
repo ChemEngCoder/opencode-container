@@ -3,12 +3,12 @@
   "mcp": {
     "context7": {
       "type": "local",
-      "command": ["npx", "-y", "@upstash/context7-mcp@1.0.17"],
+      "command": ["npx", "-y", "@upstash/context7-mcp@3.2.1"],
       "enabled": true
     }
   },
   "plugin": [
-    "superpowers@git+https://github.com/obra/superpowers.git#f2cbfbefebbfef77321e4c9abc9e949826bea9d7",
+    "superpowers@git+https://github.com/obra/superpowers.git#v6.0.2",
     "@tarquinen/opencode-dcp@3.1.12"
   ]
 }
