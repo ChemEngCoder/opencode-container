@@ -27,6 +27,7 @@ __pycache__/
 .env.*.local
 
 # OpenCode
+opencode.json
 .opencode/
 .opencode/cache/
 .cache/opencode/

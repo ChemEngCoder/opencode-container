@@ -4,8 +4,6 @@ A security-hardened Docker environment for running the [OpenCode](https://openco
 
 ## Star History
 
-## Star History
-
 <a href="https://www.star-history.com/?repos=pkhamre%2Fopencode-docker&type=timeline&logscale=&legend=bottom-right">
  <picture>
    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=pkhamre/opencode-docker&type=timeline&theme=dark&legend=bottom-right" />

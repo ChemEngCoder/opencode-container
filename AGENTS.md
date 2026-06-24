@@ -8,19 +8,6 @@ OpenCode Docker — containerized environment for running OpenCode CLI.
 
 **`make run`** (development only) — uses local `./homebase`, `./workspace`, `./secrets`. For working on this repo itself.
 
-## Secrets
-
-File-based, not env vars. Files in `/run/secrets` are loaded by `bootstrap.py` and converted to uppercase env vars:
-- `anthropic_api_key` → `ANTHROPIC_API_KEY`
-- Dashes and dots become underscores
-
-Set up:
-```bash
-mkdir -p ~/.opencode-docker/secrets
-echo "sk-..." > ~/.opencode-docker/secrets/anthropic_api_key
-chmod 600 ~/.opencode-docker/secrets/*
-```
-
 ## Distroless runtime constraints
 
 Final image is `gcr.io/distroless/base-debian13`:
@@ -28,41 +15,6 @@ Final image is `gcr.io/distroless/base-debian13`:
 - To debug: `make shell` (uses builder-tools stage with bash)
 - Available commands: `mkdir find grep rg jq cat head tail sed awk echo ls cp mv rm chmod wc sort cut env pwd date dirname basename`
 - Python 3, Node 24, git, Xvfb also available
-
-## Build and run
-
-```bash
-make build                          # Build with auto-detected UID/GID
-make build VERSION=1.3.17           # Build with version tag
-make build-latest                   # Fetch latest opencode version, build and tag
-make run                            # Dev run (uses local dirs)
-make shell                          # Debug shell (builder-tools stage)
-make clean                          # Remove image
-```
-
-Build requires `--build-arg USER_UID` and `USER_GID` matching the host user. Makefile auto-detects via `$(shell id -u)` / `$(shell id -g)`.
-
-## Directory structure
-
-| Path | Purpose | Gitignored? |
-|------|---------|-------------|
-| `config/` | opencode.json, custom skills | No (mounted rw in container) |
-| `secrets/` | Local dev secrets | Yes |
-| `homebase/` | Local dev home dir | Yes |
-| `workspace/` | Local dev workspace | Yes |
-| `superpowers/` | Local superpowers dir | Yes |
-| `scripts/collect-runtime-deps.sh` | Collects binary+lib deps for distroless | No |
-| `bootstrap.py` | Container entrypoint: secrets → Xvfb → opencode | No |
-
-## Config
-
-`config/opencode.json` defines MCP servers (context7) and loads the superpowers plugin. In the container this is mounted read-only at `/app/.config/opencode`.
-
-Custom skills: `config/skills/<name>/SKILL.md`.
-
-## Container security
-
-Runs with `--read-only`, `--cap-drop=ALL`, `--security-opt=no-new-privileges`, 2GB memory, 2 CPUs. `/tmp` is tmpfs with exec permission (512MB).
 
 ## Commit messages
 

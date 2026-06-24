@@ -15,34 +15,19 @@ set -e
 UPDATE_CONFIG=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-bootstrap() {
-    local ocd_dir="$HOME/.opencode-docker"
-    local repo_dir="${OPENCODE_DOCKER_REPO:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+ocd_dir="$HOME/.opencode-docker"
+repo_dir="${OPENCODE_DOCKER_REPO:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 
-    mkdir -p "$ocd_dir"
-    chmod 700 "$ocd_dir"
+mkdir -p "$ocd_dir/config" "$ocd_dir/secrets"
+chmod 700 "$ocd_dir" "$ocd_dir/config" "$ocd_dir/secrets"
 
-    mkdir -p "$ocd_dir/config"
-    mkdir -p "$ocd_dir/secrets"
-    chmod 700 "$ocd_dir/config"
-    chmod 700 "$ocd_dir/secrets"
-
-    if [ -d "$repo_dir/config" ]; then
-        shopt -s dotglob nullglob
-        for source_path in "$repo_dir/config"/*; do
-            target_path="$ocd_dir/config/$(basename "$source_path")"
-            if [ ! -e "$target_path" ]; then
-                cp -a "$source_path" "$target_path"
-            elif [ "$UPDATE_CONFIG" = 1 ]; then
-                cp -a "$source_path" "$target_path"
-                echo "→ Updated $(basename "$source_path")"
-            fi
-        done
-        shopt -u dotglob nullglob
-    fi
-}
-
-bootstrap
+if [ -d "$repo_dir/config" ]; then
+  if [ "$UPDATE_CONFIG" = 1 ]; then
+    cp -a "$repo_dir/config/." "$ocd_dir/config/"
+  else
+    cp -a --update=none "$repo_dir/config/." "$ocd_dir/config/"
+  fi
+fi
 
 # Default workspace to current directory if not specified
 WORKSPACE="${OPENCODE_WORKSPACE:-$(pwd)}"
