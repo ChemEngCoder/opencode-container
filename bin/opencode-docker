@@ -29,14 +29,6 @@ for f in "$ocd_dir/secrets"/*; do
   [ -f "$f" ] && printf '%s=%s\n' "$(basename "$f")" "$(cat "$f")" >> "$env_file"
 done
 
-if [ -d "$repo_dir/config" ]; then
-  if [ "$UPDATE_CONFIG" = 1 ]; then
-    cp -a "$repo_dir/config/." "$ocd_dir/config/"
-  else
-    cp -a --update=none "$repo_dir/config/." "$ocd_dir/config/"
-  fi
-fi
-
 # Default workspace to current directory if not specified
 WORKSPACE="${OPENCODE_WORKSPACE:-$(pwd)}"
 
@@ -77,6 +69,14 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+if [ -d "$repo_dir/config" ]; then
+  if [ "$UPDATE_CONFIG" = 1 ]; then
+    cp -a "$repo_dir/config/." "$ocd_dir/config/"
+  else
+    cp -a --update=none "$repo_dir/config/." "$ocd_dir/config/"
+  fi
+fi
 
 if [ -t 0 ]; then
     DOCKER_FLAGS="-it"
