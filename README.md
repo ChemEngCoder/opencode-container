@@ -211,8 +211,8 @@ The image uses a multi-stage build with a distroless runtime:
 
 <a href="https://www.star-history.com/?repos=pkhamre%2Fopencode-docker&type=timeline&logscale=&legend=bottom-right">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=pkhamre/opencode-docker&type=timeline&theme=dark&legend=bottom-right" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=pkhamre/opencode-docker&type=timeline&legend=bottom-right" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=pkhamre/opencode-docker&type=timeline&legend=bottom-right" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=pkhamre/opencode-docker&type=timeline&theme=dark&logscale&legend=bottom-right&sealed_token=G0ZZ49vg7A5UHyiEXWfNNUyHLEJ-o9l5Z23UJ_fRokVF3970EV9C2Qy1Sh8K0_-PbMrFMmDdsjhltJZzZlAu_mxFViWtIAWbZ4DnEBmzlOJi_sGHsD5K7gPyJ3XKbB1OcmJGtHBFCS6oBq4_cxUrlpMgaf6J6nxdfNPGz4CyuWUAKGQ6jFqYUGGiONHY" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=pkhamre/opencode-docker&type=timeline&logscale&legend=bottom-right&sealed_token=G0ZZ49vg7A5UHyiEXWfNNUyHLEJ-o9l5Z23UJ_fRokVF3970EV9C2Qy1Sh8K0_-PbMrFMmDdsjhltJZzZlAu_mxFViWtIAWbZ4DnEBmzlOJi_sGHsD5K7gPyJ3XKbB1OcmJGtHBFCS6oBq4_cxUrlpMgaf6J6nxdfNPGz4CyuWUAKGQ6jFqYUGGiONHY" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=pkhamre/opencode-docker&type=timeline&logscale&legend=bottom-right&sealed_token=G0ZZ49vg7A5UHyiEXWfNNUyHLEJ-o9l5Z23UJ_fRokVF3970EV9C2Qy1Sh8K0_-PbMrFMmDdsjhltJZzZlAu_mxFViWtIAWbZ4DnEBmzlOJi_sGHsD5K7gPyJ3XKbB1OcmJGtHBFCS6oBq4_cxUrlpMgaf6J6nxdfNPGz4CyuWUAKGQ6jFqYUGGiONHY" />
  </picture>
 </a>
