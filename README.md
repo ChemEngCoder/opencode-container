@@ -1,16 +1,15 @@
 # OpenCode Docker
 
-A security-hardened Docker environment for running the [OpenCode](https://opencode.ai) CLI in complete isolation. Features a read-only container with dropped Linux capabilities (principle of least privilege), seccomp profile preventing privilege escalation, and file-based secrets management.
+Run the [OpenCode](https://opencode.ai) CLI inside a locked-down Docker container: read-only root filesystem, all Linux capabilities dropped, privilege escalation blocked, and API keys loaded from files instead of the command line. Your current directory is mounted as the only writable workspace.
 
-## Star History
+Two ways to run it:
 
-<a href="https://www.star-history.com/?repos=pkhamre%2Fopencode-docker&type=timeline&logscale=&legend=bottom-right">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=pkhamre/opencode-docker&type=timeline&theme=dark&legend=bottom-right" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=pkhamre/opencode-docker&type=timeline&legend=bottom-right" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=pkhamre/opencode-docker&type=timeline&legend=bottom-right" />
- </picture>
-</a>
+- **`bin/opencode-docker`** (recommended) — persists everything to `~/.opencode-docker/` and works from any directory.
+- **`make run`** (development of this repo) — uses local `./homebase`, `./workspace`, and `./secrets`.
+
+<p align="center">
+  <img src="./assets/readme/hero.svg" width="100%" alt="OpenCode Docker hero: the real docker run flags the wrapper applies — read-only filesystem, all capabilities dropped, no-new-privileges, 4 GB memory and 4 CPU limits, secrets mounted read-only, current directory as the only writable workspace">
+</p>
 
 ## Getting Started
 
@@ -26,16 +25,19 @@ A security-hardened Docker environment for running the [OpenCode](https://openco
 # Build the image
 make build
 
-# Set up your secrets (one-time)
+# Add a provider API key (one-time)
 mkdir -p ~/.opencode-docker/secrets
-echo "your-api-key" > ~/.opencode-docker/secrets/context7_api_key
+chmod 700 ~/.opencode-docker/secrets
+echo "your-api-key" > ~/.opencode-docker/secrets/anthropic_api_key
 chmod 600 ~/.opencode-docker/secrets/*
 
-# Run using the wrapper script (recommended)
+# Run with the wrapper script (recommended)
 bin/opencode-docker
 ```
 
-### Recommended: Using the Wrapper Script
+The OpenCode TUI starts inside the container. Your current directory is mounted at `/workspace`; sessions, cache, and settings persist in `~/.opencode-docker/`. See [Secrets Management](#secrets-management) for other providers.
+
+### Using the Wrapper Script
 
 The `bin/opencode-docker` script is the recommended way to run OpenCode Docker. It:
 
@@ -44,25 +46,29 @@ The `bin/opencode-docker` script is the recommended way to run OpenCode Docker. 
 - Uses the current directory as the workspace
 - Works from any directory once added to your PATH
 
+#### Options
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-w`, `--websearch` | off | Enable Exa web search |
+| `-e`, `--experimental` | off | Enable experimental features and models |
+| `-u`, `--update-config` | off | Overwrite `~/.opencode-docker/config/` with the repo's `config/` |
+| `-m`, `--memory` | `4g` | Container memory limit |
+| `-c`, `--cpus` | `4` | Container CPU count |
+
+Any other flags are passed through to the OpenCode CLI.
+
 #### Adding to PATH
 
-##### Bash
+Adjust the path below to where you cloned this repository.
 
-Add to your `~/.bashrc`:
+**Bash** — add to `~/.bashrc`, then run `source ~/.bashrc`:
 
 ```bash
 export PATH="$HOME/git/opencode-docker/bin:$PATH"
 ```
 
-Then reload:
-
-```bash
-source ~/.bashrc
-```
-
-##### Fish
-
-Run the following command to add opencode-docker to your path. Replace the Path with the correct path for your environment.
+**Fish**:
 
 ```fish
 fish_add_path $HOME/git/opencode-docker/bin
@@ -73,54 +79,44 @@ fish_add_path $HOME/git/opencode-docker/bin
 Once added to your PATH, you can run from any directory:
 
 ```bash
-# Run in current directory
+# Run in the current directory
 opencode-docker
 
-# Continue a session
+# Continue a session (passed through to OpenCode)
 opencode-docker -s ses_2d068fdfaffefxNTts5doK0upT
 
-# Override workspace directory
+# Override the workspace directory
 OPENCODE_WORKSPACE=/path/to/project opencode-docker
+
+# Raise resource limits for a heavy session
+opencode-docker -m 8g -c 8
 ```
 
 ## Security Features
 
-This container implements defense-in-depth with multiple security layers:
+The container applies several independent layers of restriction:
 
-- **Complete isolation:** Distroless base image with no shell or package manager
-- **Read-only filesystem:** Root filesystem is immutable; only `/tmp` (tmpfs) and mounted volumes are writable
-- **Dropped capabilities:** `--cap-drop ALL` removes all Linux capabilities (principle of least privilege)
-- **Privilege escalation prevention:** `--security-opt no-new-privileges` blocks setuid/setgid exploits
-- **Unprivileged user:** Runs as non-root UID 1000 (configurable at build time)
-- **Resource limits:** Memory (2GB) and CPU (2 cores) constraints prevent resource exhaustion
-- **File-based secrets:** Secrets loaded from files (not environment variables) to avoid exposure in process listings or logs
+- **Distroless runtime:** the final image has no shell and no package manager
+- **Read-only root filesystem:** only `/tmp` (tmpfs) and mounted volumes are writable
+- **Dropped capabilities:** `--cap-drop=ALL` removes all Linux capabilities (principle of least privilege)
+- **No privilege escalation:** `--security-opt=no-new-privileges` blocks setuid/setgid exploits
+- **Non-root user:** runs as UID 1000 (configurable at build time)
+- **Resource limits:** the wrapper defaults to 4 GB memory / 4 CPUs (override with `-m`/`-c`); `make run` uses 2 GB / 2 CPUs
+- **File-based secrets:** keys mounted read-only at `/run/secrets` — never baked into the image or passed on the Docker command line
 
 ## Secrets Management
 
-This project uses file-based secrets instead of environment variables for improved security. Secrets stored in files are not visible in `docker inspect`, process listings, error messages, or logs.
+API keys live as plain files on the host and are loaded at container start — they are never baked into the image or passed on the Docker command line.
 
-### Setting Up Secrets
+### How It Works
 
-1. Create your secrets directory:
-   ```bash
-   mkdir -p ~/.opencode-docker/secrets
-   chmod 700 ~/.opencode-docker/secrets
-   ```
-
-2. Add your API keys as individual files:
-   ```bash
-   echo "your-api-key" > ~/.opencode-docker/secrets/anthropic_api_key
-   echo "your-api-key" > ~/.opencode-docker/secrets/openai_api_key
-   echo "your-api-key" > ~/.opencode-docker/secrets/context7_api_key
-   chmod 600 ~/.opencode-docker/secrets/*
-   ```
-
-3. The runtime bootstrap (`bootstrap.py`) automatically loads all files from `/run/secrets` as environment variables:
-   - Filenames are converted to uppercase
-   - Dashes and dots are replaced with underscores
+1. Set up one file per key as shown in [Quick Start](#quick-start) (`~/.opencode-docker/secrets/`, directory `700`, files `600`).
+2. The runtime bootstrap (`bootstrap.py`) reads every file in `/run/secrets` and exports it as an environment variable:
+   - Filenames are uppercased; dashes and dots become underscores
    - Example: `anthropic_api_key` becomes `ANTHROPIC_API_KEY`
+3. Any filename works — the table below lists the providers OpenCode commonly uses.
 
-### Supported Secrets
+### Commonly Used Secrets
 
 | Filename | Environment Variable | Provider |
 |----------|---------------------|----------|
@@ -131,7 +127,7 @@ This project uses file-based secrets instead of environment variables for improv
 | `aws_access_key_id` | `AWS_ACCESS_KEY_ID` | AWS Bedrock |
 | `aws_secret_access_key` | `AWS_SECRET_ACCESS_KEY` | AWS Bedrock |
 
-**Note:** Environment variables can still be passed directly if needed, but file-based secrets are strongly recommended for security.
+**Note:** the wrapper script converts these files into a temporary `--env-file` for `docker run`, so inside the container the keys appear as environment variables. The file-based layout keeps them out of image layers, the Docker command line, and shell history.
 
 ## Data Persistence & Configuration
 
@@ -153,33 +149,25 @@ When using `make run` (development only):
 | **Config** | `./config/` | OpenCode config |
 | **Workspace** | `./workspace/` | Local workspace |
 
-## Superpowers Visual Companion
-
-The [Superpowers](https://github.com/obra/superpowers) plugin includes a visual brainstorming companion that serves mockups, diagrams, and design options in your browser.
-
-The brainstorming server uses a randomly assigned port in the range 49152-65535:
-- **Wrapper script:** Use the `-b` or `--brainstorm` flag with `bin/opencode-docker`
-- **Development:** `make run` and `make shell` automatically configure and expose the port
-
-When the brainstorming skill starts, it will display the assigned port. Access it at the URL shown (e.g., `http://localhost:XXXXX`).
-
 ## Advanced Usage
 
 ### Development Commands
 
 ```bash
 make build                      # Build with auto-detected UID/GID
-make build VERSION=1.3.17       # Build with specific version tag
-make build-latest               # Build latest OpenCode version
-make tag-latest VERSION=1.3.17  # Tag a version as latest
+make build VERSION=1.17.7       # Build a specific OpenCode version
+make build-latest               # Build the latest OpenCode release
+make tag-latest VERSION=1.17.7  # Tag a built version as latest
 make run                        # Dev run (uses ./homebase, ./workspace, ./secrets)
 make shell                      # Debug shell (builder-tools stage with bash)
 make clean                      # Remove image
 ```
 
+The version examples above match `ARG OPENCODE_VERSION` in the Dockerfile; check there for the current default.
+
 ### Manual Docker Run
 
-For advanced users who need custom container configuration:
+For advanced users who need custom container configuration. These flags mirror `make run` (2 GB / 2 CPUs); the wrapper script is the maintained reference and defaults to 4 GB / 4 CPUs. Adjust the config mount to your clone path.
 
 ```bash
 docker run --rm -it \
@@ -202,19 +190,29 @@ docker run --rm -it \
 # Default UID/GID (1000)
 docker build -t opencode-docker .
 
-# With custom UID/GID (recommended)
+# With your UID/GID (recommended)
 docker build --build-arg USER_UID=$(id -u) --build-arg USER_GID=$(id -g) -t opencode-docker .
 
 # With version tag
-docker build --build-arg USER_UID=$(id -u) --build-arg USER_GID=$(id -g) -t opencode-docker:1.3.17 .
+docker build --build-arg USER_UID=$(id -u) --build-arg USER_GID=$(id -g) -t opencode-docker:1.17.7 .
 ```
 
 ### Runtime Details
 
-The image uses a multi-stage build with distroless runtime:
+The image uses a multi-stage build with a distroless runtime:
 
 - **Base:** `gcr.io/distroless/base-debian13` (no shell, no package manager)
 - **Node.js:** Node 24 from NodeSource, runtime dependencies extracted via `collect-runtime-deps.sh`
-- **Python:** Python 3 with venv support from Debian 12
-- **OpenCode:** Installed via official installer in build stage
+- **Python:** Python 3 with venv support from Debian 13
+- **OpenCode:** installed via the official, checksum-verified installer in the build stage
 - **Bootstrap:** `bootstrap.py` loads secrets from `/run/secrets`, starts Xvfb, then execs OpenCode
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=pkhamre%2Fopencode-docker&type=timeline&logscale=&legend=bottom-right">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=pkhamre/opencode-docker&type=timeline&theme=dark&legend=bottom-right" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=pkhamre/opencode-docker&type=timeline&legend=bottom-right" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=pkhamre/opencode-docker&type=timeline&legend=bottom-right" />
+ </picture>
+</a>

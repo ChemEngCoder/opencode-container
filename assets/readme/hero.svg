@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1200" height="400" viewBox="0 0 1200 400"
+     role="img" aria-labelledby="title desc">
+  <title id="title">OpenCode Docker — security-hardened container runtime for the OpenCode CLI</title>
+  <desc id="desc">Left: project name and value statement. Right: terminal card showing the real docker run flags the wrapper applies — read-only root filesystem, all Linux capabilities dropped, no-new-privileges, 4 GB memory and 4 CPU limits, secrets mounted read-only, and the current directory as the only writable workspace.</desc>
+
+  <rect width="1200" height="400" rx="24" fill="#0D1117"/>
+
+  <g id="title-block" transform="translate(56 0)">
+    <text x="0" y="84"
+          font-family="ui-monospace, SFMono-Regular, Menlo, monospace"
+          font-size="17" letter-spacing="2.5" fill="#8B949E">SECURITY-HARDENED CONTAINER RUNTIME</text>
+    <text x="0" y="148"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+          font-size="56" font-weight="700" fill="#E6EDF3">OpenCode Docker</text>
+    <text x="0" y="196"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+          font-size="22" fill="#8B949E">Run the OpenCode CLI inside a locked-down</text>
+    <text x="0" y="230"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+          font-size="22" fill="#8B949E">container. Your current directory is the only</text>
+    <text x="0" y="264"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+          font-size="22" fill="#8B949E">writable workspace.</text>
+    <line x1="0" y1="300" x2="480" y2="300" stroke="#30363D" stroke-width="1.5"/>
+    <text x="0" y="332"
+          font-family="ui-monospace, SFMono-Regular, Menlo, monospace"
+          font-size="17" fill="#8B949E">DISTROLESS BASE · NO SHELL · NON-ROOT UID</text>
+    <text x="0" y="360"
+          font-family="ui-monospace, SFMono-Regular, Menlo, monospace"
+          font-size="17" fill="#8B949E">SECRETS MOUNTED READ-ONLY · /run/secrets</text>
+  </g>
+
+  <g id="terminal-card">
+    <rect x="660" y="56" width="484" height="288" rx="14"
+          fill="#161B22" stroke="#30363D" stroke-width="1.5"/>
+    <circle cx="692" cy="88" r="6" fill="#30363D"/>
+    <circle cx="714" cy="88" r="6" fill="#30363D"/>
+    <circle cx="736" cy="88" r="6" fill="#30363D"/>
+    <text x="1120" y="93" text-anchor="end"
+          font-family="ui-monospace, SFMono-Regular, Menlo, monospace"
+          font-size="16" fill="#8B949E">host shell</text>
+    <rect x="684" y="116" width="3" height="204" rx="1.5" fill="#3FB950"/>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">
+      <text x="708" y="148"><tspan fill="#3FB950">$ </tspan><tspan fill="#E6EDF3">bin/opencode-docker</tspan></text>
+      <text x="708" y="174" fill="#8B949E">docker run \</text>
+      <text x="724" y="200" fill="#3FB950">--read-only</text>
+      <text x="724" y="226" fill="#3FB950">--cap-drop=ALL</text>
+      <text x="724" y="252" fill="#3FB950">--security-opt=no-new-privileges</text>
+      <text x="724" y="278" fill="#8B949E">--memory=4g --cpus=4</text>
+      <text x="724" y="304" fill="#8B949E">-v secrets:/run/secrets<tspan fill="#3FB950">:ro</tspan></text>
+      <text x="724" y="330" fill="#D29922">-v $PWD:/workspace:rw</text>
+    </g>
+  </g>
+</svg>
