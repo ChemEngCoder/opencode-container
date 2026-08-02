@@ -1,9 +1,9 @@
-FROM debian:13-slim@sha256:4e401d95de7083948053197a9c3913343cd06b706bf15eb6a0c3ccd26f436a0e AS builder-tools
+FROM debian:13-slim@sha256:020c0d20b9880058cbe785a9db107156c3c75c2ac944a6aa7ab59f2add76a7bd AS builder-tools
 
 ARG USER_UID=1000
 ARG USER_GID=1000
 ARG NODE_MAJOR=24
-ARG OPENCODE_VERSION=1.17.7
+ARG OPENCODE_VERSION=1.18.11
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -36,7 +36,7 @@ RUN echo "Installing OpenCode version: ${OPENCODE_VERSION}" && \
     rm -f /tmp/install-opencode.sh && \
     install -m 0755 /root/.opencode/bin/opencode /usr/local/bin/opencode
 
-RUN npm install -g @upstash/context7-mcp@3.2.1
+RUN npm install -g @upstash/context7-mcp@3.2.5
 
 RUN node --version && \
     npm --version && \
@@ -77,8 +77,7 @@ RUN mkdir -p /opt/runtime-rootfs/app/.local/share /opt/runtime-rootfs/app/.confi
     printf 'opencode:x:%s:%s:OpenCode User:/app:/usr/bin/python3\n' "${USER_UID}" "${USER_GID}" >> /opt/runtime-rootfs/etc/passwd && \
     printf 'opencode:x:%s:\n' "${USER_GID}" >> /opt/runtime-rootfs/etc/group
 
-# TODO: Pin to SHA256 digest once available: gcr.io/distroless/base-debian13@sha256:<digest>
-FROM gcr.io/distroless/base-debian13 AS final
+FROM gcr.io/distroless/base-debian13@sha256:f4a335ca209e1d2ee873102c17c389ad0142e3d5b21aee2817e9cc9c01d87d20 AS final
 
 ARG USER_UID=1000
 ARG USER_GID=1000
