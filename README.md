@@ -53,10 +53,10 @@ The `bin/opencode-docker` script is the recommended way to run OpenCode Docker. 
 | `-w`, `--websearch` | off | Enable Exa web search |
 | `-e`, `--experimental` | off | Enable experimental features and models |
 | `-u`, `--update-config` | off | Overwrite `~/.opencode-docker/config/` with the repo's `config/` |
-| `-m`, `--memory` | `4g` | Container memory limit |
-| `-c`, `--cpus` | `4` | Container CPU count |
+| `--memory` | `4g` | Container memory limit |
+| `--cpus` | `4` | Container CPU count |
 
-Any other flags are passed through to the OpenCode CLI.
+Everything else is passed through to the OpenCode CLI — including short flags like `-m`/`--model`, `-c`/`--continue`, and `-s`/`--session`, as well as subcommands. Run `opencode-docker --help` to see them all.
 
 #### Adding to PATH
 
@@ -85,11 +85,15 @@ opencode-docker
 # Continue a session (passed through to OpenCode)
 opencode-docker -s ses_2d068fdfaffefxNTts5doK0upT
 
+# Pass subcommands through (cwd is the mounted workspace)
+opencode-docker -e -w auth logout
+opencode-docker run "fix the login bug"
+
 # Override the workspace directory
 OPENCODE_WORKSPACE=/path/to/project opencode-docker
 
 # Raise resource limits for a heavy session
-opencode-docker -m 8g -c 8
+opencode-docker --memory 8g --cpus 8
 ```
 
 ## Security Features
@@ -155,9 +159,9 @@ When using `make run` (development only):
 
 ```bash
 make build                      # Build with auto-detected UID/GID
-make build VERSION=1.17.7       # Build a specific OpenCode version
+make build VERSION=1.18.11      # Build a specific OpenCode version
 make build-latest               # Build the latest OpenCode release
-make tag-latest VERSION=1.17.7  # Tag a built version as latest
+make tag-latest VERSION=1.18.11 # Tag a built version as latest
 make run                        # Dev run (uses ./homebase, ./workspace, ./secrets)
 make shell                      # Debug shell (builder-tools stage with bash)
 make clean                      # Remove image
@@ -171,6 +175,7 @@ For advanced users who need custom container configuration. These flags mirror `
 
 ```bash
 docker run --rm -it \
+  --workdir /workspace \
   --read-only \
   --tmpfs /tmp:exec,size=512m \
   --cap-drop ALL \
@@ -181,7 +186,7 @@ docker run --rm -it \
   -v /path/to/opencode-docker/config:/app/.config/opencode:rw \
   -v $(pwd):/workspace:rw \
   -v ~/.opencode-docker/secrets:/run/secrets:ro \
-  opencode-docker /workspace
+  opencode-docker
 ```
 
 ### Building Manually
@@ -194,7 +199,7 @@ docker build -t opencode-docker .
 docker build --build-arg USER_UID=$(id -u) --build-arg USER_GID=$(id -g) -t opencode-docker .
 
 # With version tag
-docker build --build-arg USER_UID=$(id -u) --build-arg USER_GID=$(id -g) -t opencode-docker:1.17.7 .
+docker build --build-arg USER_UID=$(id -u) --build-arg USER_GID=$(id -g) -t opencode-docker:1.18.11 .
 ```
 
 ### Runtime Details
