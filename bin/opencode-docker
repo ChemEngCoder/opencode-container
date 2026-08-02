@@ -7,8 +7,11 @@
 #   -w, --websearch     Enable web search (sets OPENCODE_ENABLE_EXA=1)
 #   -e, --experimental  Enable experimental features (sets OPENCODE_EXPERIMENTAL=1 and OPENCODE_ENABLE_EXPERIMENTAL_MODELS=1)
 #   -u, --update-config Overwrite ~/.opencode-docker/config/ files with repo versions
-#   -m, --memory        Set memory limit (default: 4g, e.g., -m 8g)
-#   -c, --cpus          Set CPU count (default: 4, e.g., -c 8)
+#   --memory            Set memory limit (default: 4g, e.g., --memory 8g)
+#   --cpus              Set CPU count (default: 4, e.g., --cpus 8)
+#
+# Any other flags/commands (e.g. -m/--model, -c/--continue, -s/--session,
+# auth logout, run "msg") are passed through to the OpenCode CLI.
 
 set -e
 
@@ -56,11 +59,11 @@ while [[ $# -gt 0 ]]; do
             EXTRA_ENV+=("-e OPENCODE_ENABLE_EXPERIMENTAL_MODELS=1")
             shift
             ;;
-        -m|--memory)
+        --memory)
             MEMORY_LIMIT="$2"
             shift 2
             ;;
-        -c|--cpus)
+        --cpus)
             CPU_LIMIT="$2"
             shift 2
             ;;
@@ -90,6 +93,7 @@ if [ -f "$HOME/.gitconfig" ]; then
 fi
 
 docker run --rm $DOCKER_FLAGS \
+    --workdir /workspace \
     --read-only \
     --tmpfs /tmp:exec,size=512m \
     --cap-drop=ALL \
@@ -103,4 +107,4 @@ docker run --rm $DOCKER_FLAGS \
     -v "$HOME/.opencode-docker/config:/app/.config/opencode:rw" \
     -v "$HOME/.opencode-docker/secrets:/run/secrets:ro" \
     -v "$WORKSPACE:/workspace:rw" \
-    opencode-docker:latest /workspace "$@"
+    opencode-docker:latest "$@"
