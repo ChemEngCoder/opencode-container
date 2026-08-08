@@ -32,21 +32,28 @@ def load_secrets(secrets_dir: Path = SECRETS_DIR, environ: dict[str, str] | None
         environ[name] = value
 
 
-def start_xvfb() -> None:
+def start_xvfb(popen=subprocess.Popen) -> None:
     try:
-        subprocess.Popen(
+        process = popen(
             ["Xvfb", ":99", "-screen", "0", "1024x768x24"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-    except OSError:
-        pass
+    except OSError as error:
+        raise RuntimeError("failed to start Xvfb on display :99") from error
+
+    if process.poll() is not None:
+        raise RuntimeError("Xvfb exited before OpenCode started")
+
+
+def run(args: list[str], popen=subprocess.Popen, execvp=os.execvp) -> None:
+    load_secrets()
+    start_xvfb(popen)
+    execvp("opencode", ["opencode", *args])
 
 
 def main() -> None:
-    load_secrets()
-    start_xvfb()
-    os.execvp("opencode", ["opencode", *sys.argv[1:]])
+    run(sys.argv[1:])
 
 
 if __name__ == "__main__":
