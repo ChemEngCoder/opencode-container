@@ -24,3 +24,13 @@ available to OpenCode. Secret filenames define their environment names.
 
 The bootstrap lifecycle loads secrets, starts the display, and replaces itself
 with OpenCode. A failed display startup means the launch did not succeed.
+
+## Runtime dependency collection
+
+Runtime dependency collection builds the runtime rootfs from the executable
+manifest required by the canonical launcher.
+
+## Runtime rootfs
+
+The runtime rootfs is the verified filesystem assembled for the locked-down
+production container.

@@ -199,4 +199,5 @@ The image uses a multi-stage build with a distroless runtime:
 - **Node.js:** Node 24 from NodeSource, runtime dependencies extracted via `collect-runtime-deps.sh`
 - **Python:** Python 3 with venv support from Debian 13
 - **OpenCode:** installed via the official, checksum-verified installer in the build stage
+- **Runtime collector:** resolves and verifies every executable in the Dockerfile manifest before the final image is assembled
 - **Bootstrap:** `bootstrap.py` loads secrets from `/run/secrets`, requires Xvfb on `:99`, then execs OpenCode

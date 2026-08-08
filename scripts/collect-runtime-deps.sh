@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+[ "$#" -ge 2 ] || { echo "usage: $0 ROOTFS EXECUTABLE..." >&2; exit 2; }
 ROOTFS="$1"; shift
 mkdir -p "$ROOTFS"
 
@@ -20,14 +21,23 @@ cp_with_parents() {
 }
 
 collect_ldd() {
+  local output
+  if ! output="$(ldd "$1" 2>&1)"; then
+    case "$output" in
+      *"not a dynamic executable"*|*"statically linked"*) return ;;
+      *) echo "failed to resolve shared libraries for $1: $output" >&2; return 1 ;;
+    esac
+  fi
+
   while IFS= read -r line; do
     for token in $line; do
       [[ "$token" == /* ]] || continue
       local p="${token%%(*}"
       p="${p%)}"
-      [ -e "$p" ] && cp_with_parents "$p"
+      [ -e "$p" ] || { echo "missing shared library $p for $1" >&2; return 1; }
+      cp_with_parents "$p"
     done
-  done < <(ldd "$1" 2>/dev/null || true)
+  done <<< "$output"
 }
 
 process() {
@@ -39,7 +49,8 @@ process() {
   local first; IFS= read -r first < "$1" 2>/dev/null || true
   if [[ "$first" == '#!'* ]]; then
     local interp="${first#\#!}"; interp="${interp%% *}"
-    [ -e "$interp" ] && process "$interp"
+    [ -e "$interp" ] || { echo "missing interpreter $interp for $1" >&2; return 1; }
+    process "$interp"
   fi
   local name; name="$(basename "$resolved")"
   case "$name" in python|python3|python3.*) collect_python "$resolved" ;; esac
@@ -75,7 +86,9 @@ collect_node() {
 }
 
 for exe in "$@"; do
-  p="$(command -v "$exe")" && process "$p"
+  p="$(command -v "$exe")" || { echo "missing executable: $exe" >&2; exit 1; }
+  process "$p"
+  [ -e "$ROOTFS$p" ] || { echo "collector did not copy $exe to $ROOTFS" >&2; exit 1; }
 done
 
 for p in /etc/ssl/certs /etc/passwd /etc/group /etc/ld.so.cache \
