@@ -2,10 +2,9 @@
 
 Run the [OpenCode](https://opencode.ai) CLI inside a locked-down Docker container: read-only root filesystem, all Linux capabilities dropped, privilege escalation blocked, and API keys loaded from files instead of the command line. Your current directory is mounted as the only writable workspace.
 
-Two ways to run it:
+Run it with the canonical launcher:
 
 - **`bin/opencode-docker`** (recommended) — persists everything to `~/.opencode-docker/` and works from any directory.
-- **`make run`** (development of this repo) — uses local `./homebase`, `./workspace`, and `./secrets`.
 
 <p align="center">
   <img src="./assets/readme/hero.svg" width="100%" alt="OpenCode Docker hero: the real docker run flags the wrapper applies — read-only filesystem, all capabilities dropped, no-new-privileges, 4 GB memory and 4 CPU limits, secrets mounted read-only, current directory as the only writable workspace">
@@ -105,7 +104,7 @@ The container applies several independent layers of restriction:
 - **Dropped capabilities:** `--cap-drop=ALL` removes all Linux capabilities (principle of least privilege)
 - **No privilege escalation:** `--security-opt=no-new-privileges` blocks setuid/setgid exploits
 - **Non-root user:** runs as UID 1000 (configurable at build time)
-- **Resource limits:** the wrapper defaults to 4 GB memory / 4 CPUs (override with `-m`/`-c`); `make run` uses 2 GB / 2 CPUs
+- **Resource limits:** the wrapper defaults to 4 GB memory / 4 CPUs
 - **File-based secrets:** keys mounted read-only at `/run/secrets` — never baked into the image or passed on the Docker command line
 
 ## Secrets Management
@@ -144,15 +143,6 @@ When using the wrapper script (`bin/opencode-docker`):
 | **Config** | `./config/` (this repo) | OpenCode configuration, MCP servers, custom skills |
 | **Workspace** | Current directory | Your project files |
 
-When using `make run` (development only):
-
-| Data | Location | Description |
-|------|----------|-------------|
-| **Home Directory** | `./homebase/` | Local persistent home |
-| **Secrets** | `./secrets/` | Local secrets |
-| **Config** | `./config/` | OpenCode config |
-| **Workspace** | `./workspace/` | Local workspace |
-
 ## Advanced Usage
 
 ### Development Commands
@@ -162,7 +152,6 @@ make build                      # Build with auto-detected UID/GID
 make build VERSION=1.18.11      # Build a specific OpenCode version
 make build-latest               # Build the latest OpenCode release
 make tag-latest VERSION=1.18.11 # Tag a built version as latest
-make run                        # Dev run (uses ./homebase, ./workspace, ./secrets)
 make shell                      # Debug shell (builder-tools stage with bash)
 make clean                      # Remove image
 ```
@@ -171,7 +160,7 @@ The version examples above match `ARG OPENCODE_VERSION` in the Dockerfile; check
 
 ### Manual Docker Run
 
-For advanced users who need custom container configuration. These flags mirror `make run` (2 GB / 2 CPUs); the wrapper script is the maintained reference and defaults to 4 GB / 4 CPUs. Adjust the config mount to your clone path.
+For advanced users who need custom container configuration. The wrapper script is the maintained reference and defaults to 4 GB / 4 CPUs. Adjust the config mount to your clone path.
 
 ```bash
 docker run --rm -it \
