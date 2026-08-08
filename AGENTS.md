@@ -2,6 +2,8 @@
 
 OpenCode Docker — containerized environment for running OpenCode CLI.
 
+- When reporting information to me, be extremely concise and sacrifice grammar for the sake of concision.
+
 ## Canonical launcher
 
 **`bin/opencode-docker`** (recommended for users) — uses `~/.opencode-docker/` for persistence, current dir as workspace.
