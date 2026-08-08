@@ -130,7 +130,7 @@ API keys live as plain files on the host and are loaded at container start — t
 | `aws_access_key_id` | `AWS_ACCESS_KEY_ID` | AWS Bedrock |
 | `aws_secret_access_key` | `AWS_SECRET_ACCESS_KEY` | AWS Bedrock |
 
-**Note:** the wrapper script converts these files into a temporary `--env-file` for `docker run`, so inside the container the keys appear as environment variables. The file-based layout keeps them out of image layers, the Docker command line, and shell history.
+**Note:** the wrapper mounts these files read-only at `/run/secrets`; the runtime bootstrap loads them directly into the process environment. This avoids copying secrets into a second host file or exposing them on the Docker command line.
 
 ## Data Persistence & Configuration
 

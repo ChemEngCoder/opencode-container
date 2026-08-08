@@ -13,16 +13,23 @@ def env_var_name(secret_name: str) -> str:
     return secret_name.upper().replace("-", "_").replace(".", "_")
 
 
-def load_secrets() -> None:
-    if not SECRETS_DIR.is_dir():
+def load_secrets(secrets_dir: Path = SECRETS_DIR, environ: dict[str, str] | None = None) -> None:
+    if not secrets_dir.is_dir():
         return
 
-    for entry in SECRETS_DIR.iterdir():
+    environ = os.environ if environ is None else environ
+    names: dict[str, str] = {}
+    for entry in secrets_dir.iterdir():
         if not entry.is_file():
             continue
 
+        name = env_var_name(entry.name)
+        if name in names:
+            raise RuntimeError(f"secret name collision: {names[name]} and {entry.name} -> {name}")
+
+        names[name] = entry.name
         value = entry.read_text(encoding="utf-8").rstrip("\r\n")
-        os.environ[env_var_name(entry.name)] = value
+        environ[name] = value
 
 
 def start_xvfb() -> None:
