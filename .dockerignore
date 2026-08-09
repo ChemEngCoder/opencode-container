@@ -1,0 +1,14 @@
+.git
+.worktrees
+.github
+.vscode
+workspace
+homebase
+secrets
+node_modules
+__pycache__
+*.log
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
