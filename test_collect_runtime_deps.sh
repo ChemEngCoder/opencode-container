@@ -4,9 +4,9 @@ set -euo pipefail
 ROOTFS="$(mktemp -d)"
 trap 'rm -rf "$ROOTFS"' EXIT
 
-scripts/collect-runtime-deps.sh "$ROOTFS" true
+scripts/collect-runtime-deps.sh "$ROOTFS" /bin/true
 
-TRUE_PATH="$(command -v true)"
+TRUE_PATH="$(command -v /bin/true)"
 [ -e "$ROOTFS$TRUE_PATH" ]
 
 if scripts/collect-runtime-deps.sh "$ROOTFS/missing" does-not-exist; then
