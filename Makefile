@@ -1,4 +1,4 @@
-.PHONY: build build-latest shell clean tag-latest build-builder-tools
+.PHONY: build build-latest shell clean tag-latest build-builder-tools prune-cache
 
 USER_UID := $(shell id -u)
 USER_GID := $(shell id -g)
@@ -36,3 +36,6 @@ shell: build-builder-tools
 
 clean:
 	docker rmi opencode-docker || true
+
+prune-cache:
+	docker builder prune -af
