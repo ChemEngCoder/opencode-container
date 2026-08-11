@@ -16,7 +16,7 @@ cp_with_parents() {
     local resolved; resolved="$(readlink -f "$src")"
     [ -n "$resolved" ] && [ -e "$resolved" ] && cp_with_parents "$resolved"
   else
-    cp -a "$src" "$dst"
+    cp -aT "$src" "$dst"
   fi
 }
 
