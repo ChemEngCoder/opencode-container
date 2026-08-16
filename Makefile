@@ -12,7 +12,7 @@ build-builder-tools:
 
 tag-latest:
 ifndef VERSION
-	$(error VERSION is required. Usage: make tag-latest VERSION=1.3.17)
+	$(error VERSION is required. Usage: make tag-latest VERSION=1.18.18)
 endif
 	docker tag opencode-docker:$(VERSION) opencode-docker:latest
 

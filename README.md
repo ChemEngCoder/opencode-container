@@ -149,9 +149,9 @@ When using the wrapper script (`bin/opencode-docker`):
 
 ```bash
 make build                      # Build with auto-detected UID/GID
-make build VERSION=1.18.11      # Build a specific OpenCode version
+make build VERSION=1.18.18      # Build a specific OpenCode version
 make build-latest               # Build the latest OpenCode release
-make tag-latest VERSION=1.18.11 # Tag a built version as latest
+make tag-latest VERSION=1.18.18 # Tag a built version as latest
 make shell                      # Debug shell (builder-tools stage with bash)
 make clean                      # Remove image
 ```
@@ -188,7 +188,7 @@ docker build -t opencode-docker .
 docker build --build-arg USER_UID=$(id -u) --build-arg USER_GID=$(id -g) -t opencode-docker .
 
 # With version tag
-docker build --build-arg USER_UID=$(id -u) --build-arg USER_GID=$(id -g) -t opencode-docker:1.18.11 .
+docker build --build-arg USER_UID=$(id -u) --build-arg USER_GID=$(id -g) -t opencode-docker:1.18.18 .
 ```
 
 ### Runtime Details

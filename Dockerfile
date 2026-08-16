@@ -1,9 +1,9 @@
-FROM debian:13-slim@sha256:020c0d20b9880058cbe785a9db107156c3c75c2ac944a6aa7ab59f2add76a7bd AS builder-tools
+FROM debian:13-slim@sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7f8e94f258 AS builder-tools
 
 ARG USER_UID=1000
 ARG USER_GID=1000
 ARG NODE_MAJOR=24
-ARG OPENCODE_VERSION=1.18.11
+ARG OPENCODE_VERSION=1.18.18
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -36,7 +36,7 @@ RUN echo "Installing OpenCode version: ${OPENCODE_VERSION}" && \
     rm -f /tmp/install-opencode.sh && \
     install -m 0755 /root/.opencode/bin/opencode /usr/local/bin/opencode
 
-RUN npm install -g @upstash/context7-mcp@3.2.5
+RUN npm install -g @upstash/context7-mcp@4.0.2
 
 RUN node --version && \
     npm --version && \

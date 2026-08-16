@@ -12,7 +12,7 @@
   },
   "permission": "allow",
   "plugin": [
-    "superpowers@git+https://github.com/obra/superpowers.git#v6.2.0",
-    "@tarquinen/opencode-dcp@3.1.14"
+    "superpowers@git+https://github.com/obra/superpowers.git#v6.3.0",
+    "@tarquinen/opencode-dcp@3.1.15"
   ]
 }
