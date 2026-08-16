@@ -46,19 +46,20 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -w|--websearch)
-            EXTRA_ENV+=("-e OPENCODE_ENABLE_EXA=1")
+            EXTRA_ENV+=("OPENCODE_ENABLE_EXA=1")
             shift
             ;;
         -e|--experimental)
-            EXTRA_ENV+=("-e OPENCODE_EXPERIMENTAL=1")
-            EXTRA_ENV+=("-e OPENCODE_ENABLE_EXPERIMENTAL_MODELS=1")
+            EXTRA_ENV+=("OPENCODE_EXPERIMENTAL=1" "OPENCODE_ENABLE_EXPERIMENTAL_MODELS=1")
             shift
             ;;
         --memory)
+            [ "$#" -ge 2 ] || { echo "error: --memory requires a value" >&2; exit 2; }
             MEMORY_LIMIT="$2"
             shift 2
             ;;
         --cpus)
+            [ "$#" -ge 2 ] || { echo "error: --cpus requires a value" >&2; exit 2; }
             CPU_LIMIT="$2"
             shift 2
             ;;
@@ -75,6 +76,11 @@ if [ -d "$repo_dir/config" ]; then
     cp -a --update=none "$repo_dir/config/." "$ocd_dir/config/"
   fi
 fi
+
+ENV_ARGS=()
+for assignment in "${EXTRA_ENV[@]}"; do
+    ENV_ARGS+=(--env "$assignment")
+done
 
 if [ -t 0 ]; then
     DOCKER_FLAGS="-it"
@@ -95,7 +101,7 @@ docker run --rm $DOCKER_FLAGS \
     --security-opt=no-new-privileges \
     --memory="${MEMORY_LIMIT}" \
     --cpus="${CPU_LIMIT}" \
-    "${EXTRA_ENV[@]}" \
+    "${ENV_ARGS[@]}" \
     -v "$HOME/.opencode-docker:/app:rw" \
     "${GITCONFIG_MOUNT[@]}" \
     -v "$HOME/.opencode-docker/config:/app/.config/opencode:rw" \

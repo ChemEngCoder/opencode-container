@@ -55,7 +55,7 @@ ARG USER_GID=1000
 
 RUN mkdir -p /opt/runtime-rootfs && \
     /usr/local/bin/collect-runtime-deps.sh /opt/runtime-rootfs \
-      opencode node npm python3 Xvfb xclip wl-copy wl-paste git \
+      opencode node npm python3 Xvfb xkbcomp xclip wl-copy wl-paste git \
       mkdir find grep rg jq cat head tail sed awk \
       ls cp mv rm chmod wc sort cut env date dirname basename \
       rustc cargo

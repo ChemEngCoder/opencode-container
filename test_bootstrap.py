@@ -98,7 +98,7 @@ def test_lifecycle_order_and_arguments() -> None:
     original_loader = bootstrap.load_secrets
     bootstrap.load_secrets = lambda: events.append("secrets")
     try:
-        bootstrap.run(
+        bootstrap.bootstrap(
             ["--model", "test"],
             popen=FakePopen(events, RunningProcess()),
             execvp=lambda program, command: events.append(f"exec:{program}:{command}"),

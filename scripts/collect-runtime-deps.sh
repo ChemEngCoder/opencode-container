@@ -7,6 +7,12 @@ mkdir -p "$ROOTFS"
 
 declare -A PROCESSED=()
 
+NODE_TOOLS=(npm npx corepack)
+NODE_PATHS=()
+for tool in "${NODE_TOOLS[@]}"; do
+  NODE_PATHS+=("/usr/bin/$tool" "/usr/lib/node_modules/$tool")
+done
+
 cp_with_parents() {
   local src="$1"
   local dst="${ROOTFS}${src}"
@@ -18,6 +24,11 @@ cp_with_parents() {
   else
     cp -aT "$src" "$dst"
   fi
+}
+
+ldd_path() {
+  local path="${1%%(*}"
+  echo "${path%)}"
 }
 
 collect_ldd() {
@@ -32,8 +43,8 @@ collect_ldd() {
   while IFS= read -r line; do
     for token in $line; do
       [[ "$token" == /* ]] || continue
-      local p="${token%%(*}"
-      p="${p%)}"
+      # strip trailing load-address, e.g. "/lib/x.so (0x...)" -> "/lib/x.so"
+      local p; p="$(ldd_path "$token")"
       [ -e "$p" ] || { echo "missing shared library $p for $1" >&2; return 1; }
       cp_with_parents "$p"
     done
@@ -46,15 +57,19 @@ process() {
   PROCESSED[$resolved]=1
   cp_with_parents "$1"
   collect_ldd "$1"
-  local first; IFS= read -r first < "$1" 2>/dev/null || true
-  if [[ "$first" == '#!'* ]]; then
-    local interp="${first#\#!}"; interp="${interp%% *}"
+  local shebang; IFS= read -r shebang < "$1" 2>/dev/null || true
+  if [[ "$shebang" == '#!'* ]]; then
+    local interp="${shebang#\#!}"; interp="${interp%% *}"
     [ -e "$interp" ] || { echo "missing interpreter $interp for $1" >&2; return 1; }
     process "$interp"
   fi
   local name; name="$(basename "$resolved")"
   case "$name" in python|python3|python3.*) collect_python "$resolved" ;; esac
-  case "$name" in node|nodejs|npm|npx|corepack) collect_node ;; esac
+  for tool in node nodejs "${NODE_TOOLS[@]}"; do
+    [ "$name" = "$tool" ] || continue
+    collect_node
+    break
+  done
 }
 
 collect_python() {
@@ -79,9 +94,8 @@ for p in sorted(paths):
 
 collect_node() {
   [ -e /bin/sh ] && process /bin/sh
-  for d in /usr/bin/npm /usr/bin/npx /usr/bin/corepack \
-           /usr/lib/node_modules/npm /usr/lib/node_modules/corepack; do
-    [ -e "$d" ] && cp_with_parents "$d"
+  for p in "${NODE_PATHS[@]}"; do
+    [ -e "$p" ] && cp_with_parents "$p"
   done
 }
 
@@ -92,6 +106,15 @@ for exe in "$@"; do
 done
 
 for p in /etc/ssl/certs /etc/passwd /etc/group /etc/ld.so.cache \
-         /etc/ld.so.conf /etc/ld.so.conf.d /usr/share/zoneinfo; do
-  [ -e "$p" ] && cp_with_parents "$p"
+         /etc/ld.so.conf /etc/ld.so.conf.d /usr/share/zoneinfo \
+         /usr/share/X11; do
+  if [ -e "$p" ]; then
+    cp_with_parents "$p"
+  fi
+done
+
+for modroot in /usr/lib/xorg/modules /usr/lib/*/xorg/modules; do
+  if [ -e "$modroot" ]; then
+    cp_with_parents "$modroot"
+  fi
 done
