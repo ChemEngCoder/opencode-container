@@ -54,6 +54,7 @@ The `bin/opencode-docker` script is the recommended way to run OpenCode Docker. 
 | `-u`, `--update-config` | off | Overwrite `~/.opencode-docker/config/` with the repo's `config/` |
 | `--memory` | `4g` | Container memory limit |
 | `--cpus` | `4` | Container CPU count |
+| `--host-access` | off | Add `host.docker.internal` so the container can reach host services (see [Accessing Host Services](#accessing-host-services)) |
 
 Everything else is passed through to the OpenCode CLI — including short flags like `-m`/`--model`, `-c`/`--continue`, and `-s`/`--session`, as well as subcommands. Run `opencode-docker --help` to see them all.
 
@@ -144,6 +145,37 @@ When using the wrapper script (`bin/opencode-docker`):
 | **Workspace** | Current directory | Your project files |
 
 ## Advanced Usage
+
+### Accessing Host Services
+
+By default the container runs on the Docker bridge network, so `127.0.0.1` inside the container is the container itself — host services are unreachable. Launch with `--host-access` to add a `host.docker.internal` → host-gateway mapping:
+
+```bash
+opencode-docker --host-access
+```
+
+Inside the container, reach host ports via `http://host.docker.internal:<port>`.
+
+**Linux prerequisite:** on Linux, Docker does not proxy connections to loopback, so the host service must listen beyond `127.0.0.1` — bind it to `0.0.0.0` or the docker bridge IP (usually `172.17.0.1`), otherwise you get connection refused.
+
+**Example — OmniRoute gateway:** with Omniroute listening on port 20128, paste this into `~/.opencode-docker/config/opencode.json`, then launch `opencode-docker --host-access`. It serves an OpenAI-compatible `/v1` and is keyless by default; if a key is ever needed, add `"apiKey": "{env:OMNIROUTE_API_KEY}"` under `options`.
+
+```json
+{
+  "provider": {
+    "omniroute": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "OmniRoute",
+      "options": {
+        "baseURL": "http://host.docker.internal:20128/v1"
+      },
+      "models": {
+        "auto": { "name": "OmniRoute auto" }
+      }
+    }
+  }
+}
+```
 
 ### Development Commands
 

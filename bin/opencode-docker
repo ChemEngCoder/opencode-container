@@ -9,6 +9,7 @@
 #   -u, --update-config Overwrite ~/.opencode-docker/config/ files with repo versions
 #   --memory            Set memory limit (default: 4g, e.g., --memory 8g)
 #   --cpus              Set CPU count (default: 4, e.g., --cpus 8)
+#   --host-access       Add host.docker.internal so the container can reach host services
 #
 # Any other flags/commands (e.g. -m/--model, -c/--continue, -s/--session,
 # auth logout, run "msg") are passed through to the OpenCode CLI.
@@ -36,6 +37,7 @@ if [ ! -d "$WORKSPACE" ]; then
 fi
 
 EXTRA_ENV=()
+HOST_ARGS=()
 MEMORY_LIMIT="${MEMORY_LIMIT:-4g}"
 CPU_LIMIT="${CPU_LIMIT:-4}"
 
@@ -62,6 +64,10 @@ while [[ $# -gt 0 ]]; do
             [ "$#" -ge 2 ] || { echo "error: --cpus requires a value" >&2; exit 2; }
             CPU_LIMIT="$2"
             shift 2
+            ;;
+        --host-access)
+            HOST_ARGS+=(--add-host "host.docker.internal:host-gateway")
+            shift
             ;;
         *)
             break
@@ -102,6 +108,7 @@ docker run --rm $DOCKER_FLAGS \
     --memory="${MEMORY_LIMIT}" \
     --cpus="${CPU_LIMIT}" \
     "${ENV_ARGS[@]}" \
+    "${HOST_ARGS[@]}" \
     -v "$HOME/.opencode-docker:/app:rw" \
     "${GITCONFIG_MOUNT[@]}" \
     -v "$HOME/.opencode-docker/config:/app/.config/opencode:rw" \
