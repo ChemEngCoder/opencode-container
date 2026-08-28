@@ -1,9 +1,9 @@
-FROM debian:13-slim@sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7f8e94f258 AS builder-tools
+FROM debian:13-slim@sha256:d7e12182ce18b85b93007c1dedf31f2d29e01ccf3182cc4017c709b6259bc132 AS builder-tools
 
 ARG USER_UID=1000
 ARG USER_GID=1000
 ARG NODE_MAJOR=24
-ARG OPENCODE_VERSION=1.18.18
+ARG OPENCODE_VERSION=1.18.25
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -36,7 +36,7 @@ RUN echo "Installing OpenCode version: ${OPENCODE_VERSION}" && \
     rm -f /tmp/install-opencode.sh && \
     install -m 0755 /root/.opencode/bin/opencode /usr/local/bin/opencode
 
-RUN npm install -g @upstash/context7-mcp@4.0.2
+RUN npm install -g @upstash/context7-mcp@4.0.4
 
 RUN node --version && \
     npm --version && \
@@ -77,7 +77,7 @@ RUN mkdir -p /opt/runtime-rootfs/app/.local/share /opt/runtime-rootfs/app/.confi
     printf 'opencode:x:%s:%s:OpenCode User:/app:/usr/bin/python3\n' "${USER_UID}" "${USER_GID}" >> /opt/runtime-rootfs/etc/passwd && \
     printf 'opencode:x:%s:\n' "${USER_GID}" >> /opt/runtime-rootfs/etc/group
 
-FROM gcr.io/distroless/base-debian13@sha256:f4a335ca209e1d2ee873102c17c389ad0142e3d5b21aee2817e9cc9c01d87d20 AS final
+FROM gcr.io/distroless/base-debian13@sha256:9ef50bca108839d5986e4d84b7f7b2d79024c9293b7c35b162c6c55485bd5868 AS final
 
 ARG USER_UID=1000
 ARG USER_GID=1000

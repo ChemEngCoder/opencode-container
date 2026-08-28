@@ -10,7 +10,7 @@ Audit date: 2026-05-28
 
 ## HIGH
 
-- [x] **F4** — Pin global npm packages (`@upstash/context7-mcp@1.0.17`, `@modelcontextprotocol/server-sequential-thinking@2025.12.18`) (`Dockerfile:37`)
+- [x] **F4** — Pin global npm packages (`@upstash/context7-mcp@4.0.4`) (`Dockerfile:39`)
 - [x] **F5** — Pin `debian:13-slim` to SHA256 digest (`Dockerfile:1`); distroless pinning blocked on gcr.io auth (TODO added at `Dockerfile:77`)
 - [x] **F6** — Brainstorm port exposed on `0.0.0.0` — removed entirely
 - [ ] **F7** — Add BuildKit `--secret` infrastructure for build-time secrets (`Dockerfile`)
