@@ -27,10 +27,10 @@ jobs:
           python -m pytest test_bootstrap.py -v
 
       - name: Build builder-tools stage
-        run: docker build --target builder-tools -t opencode-docker:builder-tools .
+        run: docker build --target builder-tools -t opencode-container:builder-tools .
 
       - name: Run runtime collector tests
-        run: docker run --rm -v "$PWD:/work" -w /work opencode-docker:builder-tools bash test_collect_runtime_deps.sh
+        run: docker run --rm -v "$PWD:/work" -w /work opencode-container:builder-tools bash test_collect_runtime_deps.sh
 
   build-publish:
     needs: test

@@ -1,4 +1,4 @@
-# Security TODO — opencode-docker
+# Security TODO — opencode-container
 
 Audit date: 2026-05-28
 
@@ -6,7 +6,7 @@ Audit date: 2026-05-28
 
 - [x] **F1** — Pin OpenCode installer with SHA256 verification (`Dockerfile:30-35`)
 - [x] **F2** — Create `.dockerignore` to exclude `.git/`, `node_modules/`, `secrets/`, etc.
-- [x] **F3** — Pin external plugins: `superpowers` to commit SHA, `@tarquinen/opencode-dcp` to exact version (`config/opencode.json`)
+- [x] **F3** — Pin external plugins: `@tarquinen/opencode-dcp` to exact version (`config/opencode.json`); `superpowers` plugin removed (2026-08-28)
 
 ## HIGH
 
@@ -18,9 +18,9 @@ Audit date: 2026-05-28
 ## MEDIUM
 
 - [ ] **F8** — Secrets loaded into process env — load selectively, only set required vars (`bootstrap.py:17-26`)
-- [ ] **F9** — Host `.gitconfig` mounted read-only — remove or sanitize (`bin/opencode-docker:96-98`)
-- [ ] **F10** — Overlapping volume mounts (`/app` + `/app/.config/opencode`) — remove redundant mount or document (`bin/opencode-docker:111-113`)
-- [ ] **F11** — No custom seccomp/AppArmor profile — add minimal syscall allowlist (`bin/opencode-docker:100-116`)
+- [ ] **F9** — Host `.gitconfig` mounted read-only — remove or sanitize (`bin/opencode-container:118-121`)
+- [ ] **F10** — Overlapping volume mounts (`/app` + `/app/.config/opencode`) — remove redundant mount or document (`bin/opencode-container:141-144`)
+- [ ] **F11** — No custom seccomp/AppArmor profile — add minimal syscall allowlist (`bin/opencode-container:130-146`)
 - [x] **F12** — `node_modules/` on disk — excluded via `.dockerignore`; remove from working tree if desired
 
 ## LOW

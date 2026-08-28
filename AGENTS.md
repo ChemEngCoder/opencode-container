@@ -1,17 +1,17 @@
 # AGENTS.md
 
-OpenCode Docker — containerized environment for running OpenCode CLI.
+OpenCode Container — containerized environment for running OpenCode CLI (Docker or Podman).
 
 - When reporting information to me, be extremely concise and sacrifice grammar for the sake of concision.
 
 ## Canonical launcher
 
-**`bin/opencode-docker`** (recommended for users) — uses `~/.opencode-docker/` for persistence, current dir as workspace.
+**`bin/opencode-container`** (recommended for users) — picks podman or docker (`$CONTAINER_ENGINE` overrides), uses `~/.opencode-container/` for persistence, current dir as workspace.
 
 ## Distroless runtime constraints
 
 Final image is `gcr.io/distroless/base-debian13`:
-- **No `/bin/bash` or `/bin/sh`** — cannot `docker exec` into production container
+- **No `/bin/bash` or `/bin/sh`** — cannot exec into production container
 - To debug: `make shell` (uses builder-tools stage with bash)
 - Available commands: `mkdir find grep rg jq cat head tail sed awk echo ls cp mv rm chmod wc sort cut env pwd date dirname basename`
 - Python 3, Node 24, git, Xvfb also available
