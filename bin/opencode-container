@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 #
-# OpenCode Docker wrapper script
-# Add this directory to your PATH to run the Docker isolated OpenCode from anywhere
+# OpenCode Container wrapper script
+# Add this directory to your PATH to run the container-isolated OpenCode from anywhere
+#
+# Uses podman or docker (first found), or the engine named by $CONTAINER_ENGINE.
 #
 # Options:
 #   -w, --websearch     Enable web search (sets OPENCODE_ENABLE_EXA=1)
 #   -e, --experimental  Enable experimental features (sets OPENCODE_EXPERIMENTAL=1 and OPENCODE_ENABLE_EXPERIMENTAL_MODELS=1)
-#   -u, --update-config Overwrite ~/.opencode-docker/config/ files with repo versions
+#   -u, --update-config Overwrite ~/.opencode-container/config/ files with repo versions
 #   --memory            Set memory limit (default: 4g, e.g., --memory 8g)
 #   --cpus              Set CPU count (default: 4, e.g., --cpus 8)
-#   --host-access       Add host.docker.internal so the container can reach host services
+#   --host-access       Add the engine's host alias so the container can reach host services
 #
 # Any other flags/commands (e.g. -m/--model, -c/--continue, -s/--session,
 # auth logout, run "msg") are passed through to the OpenCode CLI.
@@ -19,8 +21,24 @@ set -e
 UPDATE_CONFIG=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-ocd_dir="$HOME/.opencode-docker"
-repo_dir="${OPENCODE_DOCKER_REPO:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+ENGINE="${CONTAINER_ENGINE:-}"
+if [ -z "$ENGINE" ]; then
+    if command -v podman >/dev/null 2>&1; then
+        ENGINE=podman
+    elif command -v docker >/dev/null 2>&1; then
+        ENGINE=docker
+    else
+        echo "Error: no container engine found; install podman/docker or set CONTAINER_ENGINE" >&2
+        exit 1
+    fi
+fi
+
+ocd_dir="$HOME/.opencode-container"
+# One-time migration from the pre-rename docker-only state dir
+if [ -d "$HOME/.opencode-docker" ] && [ ! -d "$ocd_dir" ]; then
+    mv "$HOME/.opencode-docker" "$ocd_dir"
+fi
+repo_dir="${OPENCODE_CONTAINER_REPO:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 
 mkdir -p "$ocd_dir/config" "$ocd_dir/secrets"
 chmod 700 "$ocd_dir" "$ocd_dir/config" "$ocd_dir/secrets"
@@ -66,7 +84,10 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --host-access)
-            HOST_ARGS+=(--add-host "host.docker.internal:host-gateway")
+            case "$ENGINE" in
+                podman) HOST_ARGS+=(--add-host "host.containers.internal:host-gateway") ;;
+                *)      HOST_ARGS+=(--add-host "host.docker.internal:host-gateway") ;;
+            esac
             shift
             ;;
         *)
@@ -89,9 +110,9 @@ for assignment in "${EXTRA_ENV[@]}"; do
 done
 
 if [ -t 0 ]; then
-    DOCKER_FLAGS="-it"
+    RUN_FLAGS="-it"
 else
-    DOCKER_FLAGS="-i"
+    RUN_FLAGS="-i"
 fi
 
 GITCONFIG_MOUNT=()
@@ -99,19 +120,27 @@ if [ -f "$HOME/.gitconfig" ]; then
     GITCONFIG_MOUNT=(-v "$HOME/.gitconfig:/app/.gitconfig:ro")
 fi
 
-docker run --rm $DOCKER_FLAGS \
+USERNS_ARGS=()
+if [ "$ENGINE" = podman ]; then
+    # ponytail: keep-id is rootless-only; rootful podman (sudo) will reject it
+    USERNS_ARGS=(--userns=keep-id)
+fi
+
+# ponytail: --memory/--cpus need cgroup v2 + systemd user session, else rootless podman warns and ignores them
+"$ENGINE" run --rm $RUN_FLAGS \
+    "${USERNS_ARGS[@]}" \
     --workdir /workspace \
     --read-only \
-    --tmpfs /tmp:exec,size=512m \
+    --tmpfs /tmp:exec,size=512m,mode=1777 \
     --cap-drop=ALL \
     --security-opt=no-new-privileges \
     --memory="${MEMORY_LIMIT}" \
     --cpus="${CPU_LIMIT}" \
     "${ENV_ARGS[@]}" \
     "${HOST_ARGS[@]}" \
-    -v "$HOME/.opencode-docker:/app:rw" \
+    -v "$HOME/.opencode-container:/app:rw" \
     "${GITCONFIG_MOUNT[@]}" \
-    -v "$HOME/.opencode-docker/config:/app/.config/opencode:rw" \
-    -v "$HOME/.opencode-docker/secrets:/run/secrets:ro" \
+    -v "$HOME/.opencode-container/config:/app/.config/opencode:rw" \
+    -v "$HOME/.opencode-container/secrets:/run/secrets:ro" \
     -v "$WORKSPACE:/workspace:rw" \
-    opencode-docker:latest "$@"
+    opencode-container:latest "$@"
