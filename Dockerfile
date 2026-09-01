@@ -5,6 +5,21 @@ ARG USER_GID=1000
 ARG NODE_MAJOR=24
 ARG OPENCODE_VERSION=1.18.25
 
+# Proxy passthrough; both cases because apt/curl/gpg prefer lowercase,
+# npm/pip/git differ on which they read. Makefile normalizes so both arrive set.
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG NO_PROXY
+ARG http_proxy
+ARG https_proxy
+ARG no_proxy
+ENV HTTP_PROXY=${HTTP_PROXY} \
+    HTTPS_PROXY=${HTTPS_PROXY} \
+    NO_PROXY=${NO_PROXY} \
+    http_proxy=${http_proxy} \
+    https_proxy=${https_proxy} \
+    no_proxy=${no_proxy}
+
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install --no-install-recommends -y \

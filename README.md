@@ -229,6 +229,19 @@ docker build --build-arg USER_UID=$(id -u) --build-arg USER_GID=$(id -g) -t open
 
 `make build` does this for you with whichever engine is installed (override with `ENGINE=docker` or `ENGINE=podman`).
 
+### Building Behind a Proxy
+
+Export the proxy variables in your shell and `make build` / `make build-builder-tools` forward them automatically as build args (both upper- and lower-case, so apt/curl/npm all pick them up):
+
+```bash
+export HTTP_PROXY=http://proxy.example:3128
+export HTTPS_PROXY=$HTTP_PROXY
+export NO_PROXY=localhost,127.0.0.1
+make build
+```
+
+The launcher also forwards these into the running container, so OpenCode inside it can reach the network. If a previously failed (no-proxy) build left stale layers, run `make prune-cache` first. Note: if your proxy terminates TLS with a corporate CA certificate, build-time certificate validation will still fail unless that CA is added to the image.
+
 ### Runtime Details
 
 The image uses a multi-stage build with a distroless runtime:
