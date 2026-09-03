@@ -1,0 +1,255 @@
+# =============================================================================
+#  llama.cpp — CUDA build for NVIDIA Hopper (H100, sm_90)
+#  Apptainer / SingularityCE definition file
+#
+#  Build:
+#     apptainer build --fakeroot llama-cpp-cuda.sif apptainer.def
+#     # or, on a cluster without fakeroot:
+#     apptainer build --remote llama-cpp-cuda.sif apptainer.def
+#
+#  Run (the --nv flag is what makes it GPU-aware):
+#     apptainer run --nv --bind /scratch/models:/models llama-cpp-cuda.sif \
+#         -m /models/model.gguf --n-gpu-layers 999 --host 0.0.0.0 --port 8080
+#
+#  WHY THIS BASE IMAGE
+#  -------------------
+#  nvidia/cuda:*-devel-ubuntu24.04 (build) + nvidia/cuda:*-runtime-ubuntu24.04
+#  (final), rather than debian:13-slim or an NGC PyTorch release container:
+#
+#   * debian:13-slim would mean adding NVIDIA's apt repo and installing
+#     cuda-toolkit by hand. That works, but you own the repo key rotation, the
+#     package-set pinning and the fact that Debian 13's default GCC may be
+#     ahead of what nvcc accepts (nvcc rejects unsupported host compilers
+#     outright). The nvidia/cuda images already ship a toolkit + host compiler
+#     combination NVIDIA has tested together, which removes the single most
+#     common cause of failed llama.cpp CUDA builds.
+#   * An NGC PyTorch container has the CUDA stack too, but it drags in torch,
+#     cuDNN, NCCL, TensorRT, Python and Apex — several GB of layers that
+#     llama.cpp never links against. In Apptainer that cost is not amortised
+#     across layers the way it is in Docker: it is a single flat SIF that gets
+#     copied onto a shared filesystem and re-read on every node at job start.
+#     Keeping the image small is a real scheduling concern on HPC.
+#   * The two-stage split below matters for the same reason: nvcc, the static
+#     CUDA libs and the headers live only in the build stage. The final image
+#     carries the CUDA *runtime* redistributables (libcudart, libcublas,
+#     libcublasLt) and nothing else, which is roughly a third of the -devel
+#     image's size.
+#
+#  WHY NO DRIVER IS INSTALLED
+#  --------------------------
+#  Apptainer's `--nv` injects the *host's* driver libraries (libcuda.so,
+#  libnvidia-ml.so, nvidia-smi, ...) into the container at startup. Installing
+#  a driver inside the image would be wrong: it would shadow the host driver
+#  and produce a version mismatch. The image needs the CUDA *toolkit/runtime*
+#  only. CUDA minor version compatibility means a CUDA 13.0 build runs against
+#  any R580+ host driver, so this SIF is portable across cluster driver
+#  updates.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Stage 1 — compile
+# -----------------------------------------------------------------------------
+Bootstrap: docker
+From: nvidia/cuda:13.0.2-devel-ubuntu24.04
+Stage: build
+
+%post
+    set -eux
+    export DEBIAN_FRONTEND=noninteractive
+
+    # --- knobs -------------------------------------------------------------
+    # Pin this to a tag (e.g. b7412) or a commit SHA for reproducible images.
+    # "master" tracks the latest upstream at build time, as requested.
+    LLAMA_REF="master"
+
+    # H100 is compute capability 9.0. "90-real" emits SASS for sm_90 only and
+    # skips the PTX blob, which cuts compile time and image size. Use
+    # "90-real;90-virtual" if you also want forward-compat JIT onto future
+    # architectures, or "80-real;90-real" for a mixed A100/H100 cluster.
+    CUDA_ARCH="80-real;90-real"
+
+    NPROC="$(nproc)"
+    # -----------------------------------------------------------------------
+
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        ccache \
+        cmake \
+        git \
+        libcurl4-openssl-dev \
+        libgomp1 \
+        ninja-build \
+        pkg-config \
+        python3
+    rm -rf /var/lib/apt/lists/*
+
+    mkdir -p /src
+    cd /src
+    # Shallow-clone when LLAMA_REF is a branch or tag; fall back to a full
+    # clone so that a raw commit SHA also works.
+    git clone --depth 1 --branch "${LLAMA_REF}" \
+        https://github.com/ggml-org/llama.cpp.git llama.cpp \
+      || { git clone https://github.com/ggml-org/llama.cpp.git llama.cpp \
+           && git -C llama.cpp checkout "${LLAMA_REF}"; }
+    cd /src/llama.cpp
+
+    cmake -B build -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_CUDA_ARCHITECTURES="${CUDA_ARCH}" \
+        -DGGML_CUDA=ON \
+        -DGGML_NATIVE=OFF \
+        -DGGML_BACKEND_DL=ON \
+        -DGGML_CPU_ALL_VARIANTS=ON \
+        -DBUILD_SHARED_LIBS=ON \
+        -DLLAMA_CURL=ON \
+        -DLLAMA_BUILD_TESTS=OFF \
+        -DLLAMA_BUILD_EXAMPLES=OFF \
+        -DLLAMA_BUILD_SERVER=ON
+    #
+    #  GGML_NATIVE=OFF          the build host is not the compute host. Without
+    #                           this, -march=native bakes in the build node's
+    #                           ISA and the SIF SIGILLs on any older node.
+    #  GGML_BACKEND_DL=ON  +    backends become dlopen-ed .so files and the CPU
+    #  GGML_CPU_ALL_VARIANTS    backend ships one variant per ISA level, picked
+    #                           at runtime. Together these make one SIF safe to
+    #                           run on a heterogeneous cluster and let it start
+    #                           on a CPU-only login node for --help/quantize.
+    #  LLAMA_CURL=ON            enables `-hf user/repo` model pulls; drop it
+    #                           (and libcurl below) for an air-gapped image.
+    #
+    #  Optional, deliberately off:
+    #  -DGGML_CUDA_FA_ALL_QUANTS=ON   every KV-cache quant combo for flash
+    #                                 attention. Adds a lot of compile time;
+    #                                 on H100 with 80GB you rarely need
+    #                                 anything below q8_0 KV.
+    #  -DGGML_CUDA_FORCE_MMQ=ON       force the custom quantised matmul kernels
+    #                                 instead of letting ggml pick cuBLAS.
+
+    cmake --build build --config Release -j "${NPROC}"
+
+    # Lay the artefacts out as bin/ + lib/ so LD_LIBRARY_PATH is enough for
+    # ggml to find the dlopen-able backends (libggml-cuda.so et al).
+    mkdir -p /opt/llama.cpp/bin /opt/llama.cpp/lib
+    find build/bin -maxdepth 1 -type f -executable ! -name '*.so*' \
+        -exec cp {} /opt/llama.cpp/bin/ \;
+    find build -name '*.so*' -exec cp -P {} /opt/llama.cpp/lib/ \;
+    cp LICENSE /opt/llama.cpp/ || true
+
+    # Record exactly what went in — invaluable when a job regresses months later.
+    {
+        echo "llama.cpp ref:     ${LLAMA_REF}"
+        echo "llama.cpp commit:  $(git rev-parse HEAD)"
+        echo "cuda arch:         ${CUDA_ARCH}"
+        echo "nvcc:              $(nvcc --version | tail -n2 | head -n1)"
+        echo "built:             $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    } > /opt/llama.cpp/BUILD_INFO
+
+# -----------------------------------------------------------------------------
+# Stage 2 — runtime
+# -----------------------------------------------------------------------------
+Bootstrap: docker
+From: nvidia/cuda:13.0.2-runtime-ubuntu24.04
+Stage: final
+
+%files from build
+    /opt/llama.cpp /opt/llama.cpp
+
+%post
+    set -eux
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    # libcurl4t64 is the Ubuntu 24.04 name; the fallback keeps this def usable
+    # if you retarget the base image at 22.04.
+    apt-get install -y --no-install-recommends ca-certificates libgomp1 \
+        && { apt-get install -y --no-install-recommends libcurl4t64 \
+             || apt-get install -y --no-install-recommends libcurl4; }
+    rm -rf /var/lib/apt/lists/*
+
+    # Mount points for a read-only SIF: bind your model store and cache here.
+    mkdir -p /models /workspace
+    chmod 1777 /workspace
+
+%environment
+    export LLAMA_HOME=/opt/llama.cpp
+    export PATH="${LLAMA_HOME}/bin:${PATH}"
+    # Appended, never overwritten: Apptainer puts the host driver libraries
+    # injected by --nv on LD_LIBRARY_PATH (/.singularity.d/libs) and clobbering
+    # it is the classic "cannot find libcuda.so.1" failure.
+    export LD_LIBRARY_PATH="${LLAMA_HOME}/lib:${LD_LIBRARY_PATH:-}"
+    # Models downloaded with -hf land here; bind it or the container writes to
+    # $HOME, which on many clusters is quota'd and slow.
+    export LLAMA_CACHE="${LLAMA_CACHE:-/workspace/.cache/llama.cpp}"
+    # Uncomment to let the CUDA allocator spill into host memory (useful for
+    # oversized KV caches; costs PCIe bandwidth when it triggers).
+    # export GGML_CUDA_ENABLE_UNIFIED_MEMORY=1
+
+%runscript
+    # `apptainer run <sif> <tool> [args]` dispatches to any llama-* binary;
+    # anything else is treated as arguments to llama-server.
+    if [ "$#" -gt 0 ] && [ -x "/opt/llama.cpp/bin/$1" ]; then
+        _exe="$1"; shift
+        exec "/opt/llama.cpp/bin/${_exe}" "$@"
+    fi
+    exec /opt/llama.cpp/bin/llama-server "$@"
+
+%apprun server
+    exec /opt/llama.cpp/bin/llama-server "$@"
+
+%apprun cli
+    exec /opt/llama.cpp/bin/llama-cli "$@"
+
+%apprun bench
+    exec /opt/llama.cpp/bin/llama-bench "$@"
+
+%apprun quantize
+    exec /opt/llama.cpp/bin/llama-quantize "$@"
+
+%apprun perplexity
+    exec /opt/llama.cpp/bin/llama-perplexity "$@"
+
+%test
+    # Runs at build time, where there is usually no GPU — so this checks that
+    # the binaries link and that the CUDA backend object is present, not that
+    # a device is visible. Verify the device separately with:
+    #   apptainer exec --nv llama-cpp-cuda.sif llama-cli --list-devices
+    set -e
+    /opt/llama.cpp/bin/llama-cli --version
+    test -f /opt/llama.cpp/lib/libggml-cuda.so
+    echo "OK: llama.cpp binaries and CUDA backend present"
+    cat /opt/llama.cpp/BUILD_INFO
+
+%labels
+    Author        Mark
+    Application   llama.cpp
+    Backend       CUDA (Hopper / sm_90)
+    Base          nvidia/cuda:13.0.2-runtime-ubuntu24.04
+
+%help
+    llama.cpp compiled for NVIDIA H100 (compute capability 9.0).
+
+    GPU access requires --nv, which binds the host NVIDIA driver into the
+    container. No driver is installed in the image by design.
+
+      # serve a model over HTTP
+      apptainer run --nv --bind /scratch/models:/models \
+          llama-cpp-cuda.sif -m /models/llama-3.1-70b-q4_k_m.gguf \
+          --n-gpu-layers 999 --ctx-size 8192 --host 0.0.0.0 --port 8080
+
+      # one-shot generation
+      apptainer run --nv llama-cpp-cuda.sif cli \
+          -m /models/model.gguf -p "Explain MIG partitioning." -ngl 999
+
+      # throughput sweep
+      apptainer run --nv llama-cpp-cuda.sif bench -m /models/model.gguf
+
+      # confirm the GPU is visible
+      apptainer exec --nv llama-cpp-cuda.sif llama-cli --list-devices
+
+    Multi-GPU on an 8x H100 node: --tensor-split and --split-mode are handled
+    by llama.cpp itself; restrict visible devices with
+    --env CUDA_VISIBLE_DEVICES=0,1 or let Slurm's --gpus binding do it.
+
+    Build provenance (upstream ref, commit, nvcc version) is recorded in
+    /opt/llama.cpp/BUILD_INFO.
