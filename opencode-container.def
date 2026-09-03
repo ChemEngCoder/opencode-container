@@ -1,0 +1,134 @@
+Bootstrap: docker
+From: debian:13-slim@sha256:d7e12182ce18b85b93007c1dedf31f2d29e01ccf3182cc4017c709b6259bc132
+
+# ---------------------------------------------------------------------------
+# Build args require Apptainer >= 1.3 (--build-arg / {{ }} templating).
+# On older releases: delete this block and inline the literals below.
+# ---------------------------------------------------------------------------
+%arguments
+    OPENCODE_VERSION=1.18.25
+    OPENCODE_INSTALLER_SHA256=fc3c1b2123f49b6df545a7622e5127d21cd794b15134fc3b66e1ca49f7fb297e
+    NODE_MAJOR=24
+    CONTEXT7_MCP_VERSION=4.0.4
+
+%labels
+    org.opencontainers.image.title      opencode-container
+    org.opencontainers.image.description OpenCode CLI in a locked-down Apptainer container
+    org.opencontainers.image.source     https://opencode.ai
+    opencode.version                    {{ OPENCODE_VERSION }}
+    node.major                          {{ NODE_MAJOR }}
+
+%files
+    bootstrap.py /usr/local/bin/bootstrap.py
+
+%post
+    set -eux
+    export DEBIAN_FRONTEND=noninteractive
+
+    # Apptainer forwards HTTP_PROXY/HTTPS_PROXY/NO_PROXY (and lowercase variants)
+    # from the build environment into %post, so no explicit proxy plumbing is
+    # needed here -- see the Makefile.
+
+    apt-get update
+    apt-get install --no-install-recommends -y \
+        ca-certificates \
+        curl \
+        gnupg \
+        git \
+        python3 \
+        python3-venv \
+        xvfb \
+        xclip \
+        wl-clipboard \
+        ripgrep \
+        jq \
+        rustc \
+        cargo
+    rm -rf /var/lib/apt/lists/*
+
+    # --- Node.js from NodeSource ------------------------------------------
+    mkdir -p /etc/apt/keyrings
+    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+        | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_{{ NODE_MAJOR }}.x nodistro main" \
+        > /etc/apt/sources.list.d/nodesource.list
+    apt-get update
+    apt-get install --no-install-recommends -y nodejs
+    rm -rf /var/lib/apt/lists/*
+
+    # --- OpenCode (checksum-verified official installer) -------------------
+    echo "Installing OpenCode version: {{ OPENCODE_VERSION }}"
+    curl -fsSL https://opencode.ai/install -o /tmp/install-opencode.sh
+    echo "{{ OPENCODE_INSTALLER_SHA256 }}  /tmp/install-opencode.sh" | sha256sum -c -
+    bash /tmp/install-opencode.sh --version "{{ OPENCODE_VERSION }}" --no-modify-path
+    rm -f /tmp/install-opencode.sh
+    install -m 0755 /root/.opencode/bin/opencode /usr/local/bin/opencode
+    rm -rf /root/.opencode
+
+    # --- MCP servers -------------------------------------------------------
+    npm install -g @upstash/context7-mcp@{{ CONTEXT7_MCP_VERSION }}
+    npm cache clean --force
+
+    # --- Runtime entrypoint ------------------------------------------------
+    chmod 0755 /usr/local/bin/bootstrap.py
+
+    # --- Bind mount points --------------------------------------------------
+    # The SIF is an immutable squashfs at runtime, so every writable path must
+    # be a bind mount and every mount point must already exist in the image.
+    # No chown is needed: Apptainer runs the container as the invoking user,
+    # and each of these directories is covered by a host bind at runtime.
+    mkdir -p /workspace /run/secrets /app/.config/opencode /app/.local/share /app/.cache
+    chmod 0755 /workspace /run/secrets /app
+
+    # Mount point for the host's ~/.gitconfig (see bin/opencode-apptainer).
+    # Bound as GIT_CONFIG_GLOBAL rather than nested inside the /app bind.
+    : > /opt/host-gitconfig
+    chmod 0644 /opt/host-gitconfig
+
+%environment
+    export DISPLAY=:99.0
+    export XDG_CONFIG_HOME=/app/.config
+    export OPENCODE_CONFIG_DIR=/app/.config/opencode
+    export XDG_DATA_HOME=/app/.local/share
+    export XDG_CACHE_HOME=/app/.cache
+    export PATH=/usr/local/bin:/usr/bin:/bin
+    # HOME is set by the launcher via `--home <state-dir>:/app`.
+
+%runscript
+    exec /usr/bin/python3 /usr/local/bin/bootstrap.py "$@"
+
+%test
+    set -e
+    node --version
+    npm --version
+    python3 --version
+    python3 -m venv /tmp/test-venv && rm -rf /tmp/test-venv
+    command -v Xvfb
+    command -v rg
+    command -v jq
+    command -v git
+    command -v rustc
+    opencode --version
+
+%help
+    OpenCode CLI in a locked-down Apptainer container.
+
+    Run it through the launcher, which applies the bind mounts, cgroup limits
+    and containment flags:
+
+        bin/opencode-apptainer [-w] [-e] [--memory 8g] [--cpus 8] [opencode args...]
+
+    Direct invocation (equivalent minimum):
+
+        apptainer run --containall \
+            --home ~/.opencode-apptainer:/app \
+            --workdir "$(mktemp -d)" \
+            --pwd /workspace \
+            --bind "$PWD:/workspace:rw" \
+            --bind ~/.opencode-apptainer/config:/app/.config/opencode:rw \
+            --bind ~/.opencode-apptainer/secrets:/run/secrets:ro \
+            opencode-container.sif
+
+    API keys are one file per key in ~/.opencode-apptainer/secrets (dir 700,
+    files 600). bootstrap.py uppercases each filename and exports it:
+    anthropic_api_key -> ANTHROPIC_API_KEY.

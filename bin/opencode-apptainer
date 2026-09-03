@@ -1,0 +1,248 @@
+#!/usr/bin/env bash
+#
+# OpenCode Apptainer wrapper script
+# Add this directory to your PATH to run the container-isolated OpenCode from anywhere
+#
+# Uses apptainer, or singularity as a fallback, or the binary named by $APPTAINER_BIN.
+#
+# Options:
+#   -w, --websearch     Enable web search (sets OPENCODE_ENABLE_EXA=1)
+#   -e, --experimental  Enable experimental features (sets OPENCODE_EXPERIMENTAL=1 and OPENCODE_ENABLE_EXPERIMENTAL_MODELS=1)
+#   -u, --update-config Overwrite ~/.opencode-apptainer/config/ files with repo versions
+#   --memory            Set memory limit (default: 4g, e.g., --memory 8g)
+#   --cpus              Set CPU count (default: 4, e.g., --cpus 8)
+#   --sif PATH          Use a specific .sif image
+#   --host-access       Deprecated no-op; Apptainer shares the host network namespace
+#
+# Any other flags/commands (e.g. -m/--model, -c/--continue, -s/--session,
+# auth logout, run "msg") are passed through to the OpenCode CLI.
+#
+# Environment:
+#   APPTAINER_BIN               apptainer/singularity binary to use
+#   OPENCODE_APPTAINER_SIF      path to the .sif image
+#   OPENCODE_STATE_DIR          host state dir (default ~/.opencode-apptainer)
+#   OPENCODE_WORKSPACE          directory mounted at /workspace (default: cwd)
+#   OPENCODE_CONTAINER_REPO     repo root, for seeding config/
+
+set -euo pipefail
+
+UPDATE_CONFIG=0
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_dir="${OPENCODE_CONTAINER_REPO:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+
+# --- container runtime ------------------------------------------------------
+APPTAINER_BIN="${APPTAINER_BIN:-}"
+if [ -z "$APPTAINER_BIN" ]; then
+    if command -v apptainer >/dev/null 2>&1; then
+        APPTAINER_BIN=apptainer
+    elif command -v singularity >/dev/null 2>&1; then
+        APPTAINER_BIN=singularity
+    else
+        echo "Error: no apptainer found; install apptainer or set APPTAINER_BIN" >&2
+        exit 1
+    fi
+fi
+
+# --- host state -------------------------------------------------------------
+state_dir="${OPENCODE_STATE_DIR:-$HOME/.opencode-apptainer}"
+
+mkdir -p \
+    "$state_dir/config" \
+    "$state_dir/secrets" \
+    "$state_dir/.config" \
+    "$state_dir/.local/share" \
+    "$state_dir/.cache"
+chmod 700 "$state_dir" "$state_dir/config" "$state_dir/secrets"
+
+# /app/.config/opencode is bound on top of the /app home bind, so the nested
+# mount point has to exist on the host side too.
+mkdir -p "$state_dir/.config/opencode"
+
+if [ -d "$HOME/.opencode-container" ] && [ ! -e "$state_dir/.migrated-hint" ]; then
+    echo "note: ~/.opencode-container exists (Docker/Podman state). To share it," >&2
+    echo "      run with OPENCODE_STATE_DIR=\$HOME/.opencode-container" >&2
+    : > "$state_dir/.migrated-hint"
+fi
+
+WORKSPACE="${OPENCODE_WORKSPACE:-$(pwd)}"
+if [ ! -d "$WORKSPACE" ]; then
+    echo "Error: workspace path is not an existing directory: $WORKSPACE" >&2
+    exit 1
+fi
+
+# --- argument parsing -------------------------------------------------------
+EXTRA_ENV=()
+MEMORY_LIMIT="${MEMORY_LIMIT:-4g}"
+CPU_LIMIT="${CPU_LIMIT:-4}"
+SIF="${OPENCODE_APPTAINER_SIF:-}"
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -u|--update-config)
+            UPDATE_CONFIG=1
+            shift
+            ;;
+        -w|--websearch)
+            EXTRA_ENV+=("OPENCODE_ENABLE_EXA=1")
+            shift
+            ;;
+        -e|--experimental)
+            EXTRA_ENV+=("OPENCODE_EXPERIMENTAL=1" "OPENCODE_ENABLE_EXPERIMENTAL_MODELS=1")
+            shift
+            ;;
+        --memory)
+            [ "$#" -ge 2 ] || { echo "error: --memory requires a value" >&2; exit 2; }
+            MEMORY_LIMIT="$2"
+            shift 2
+            ;;
+        --cpus)
+            [ "$#" -ge 2 ] || { echo "error: --cpus requires a value" >&2; exit 2; }
+            CPU_LIMIT="$2"
+            shift 2
+            ;;
+        --sif)
+            [ "$#" -ge 2 ] || { echo "error: --sif requires a value" >&2; exit 2; }
+            SIF="$2"
+            shift 2
+            ;;
+        --host-access)
+            echo "note: --host-access is a no-op under Apptainer; the container shares" >&2
+            echo "      the host network namespace, so host services are on 127.0.0.1" >&2
+            shift
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+# --- image ------------------------------------------------------------------
+if [ -z "$SIF" ]; then
+    for candidate in \
+        "$state_dir/opencode-container.sif" \
+        "$repo_dir/images/opencode-container.sif"
+    do
+        if [ -f "$candidate" ]; then
+            SIF="$candidate"
+            break
+        fi
+    done
+fi
+
+if [ -z "$SIF" ] || [ ! -f "$SIF" ]; then
+    echo "Error: no image found. Build one with 'make build', or pass --sif PATH" >&2
+    echo "       (looked in $state_dir/ and $repo_dir/images/)" >&2
+    exit 1
+fi
+
+# --- config seeding ---------------------------------------------------------
+if [ -d "$repo_dir/config" ]; then
+    if [ "$UPDATE_CONFIG" = 1 ]; then
+        cp -a "$repo_dir/config/." "$state_dir/config/"
+    else
+        cp -a --update=none "$repo_dir/config/." "$state_dir/config/"
+    fi
+fi
+
+# --- scratch dir backing /tmp and /var/tmp ----------------------------------
+# Replaces docker's `--tmpfs /tmp:exec,size=512m`. Point TMPDIR at a size-capped
+# tmpfs beforehand if you want a hard cap.
+scratch="$(mktemp -d "${TMPDIR:-/tmp}/opencode-apptainer.XXXXXXXX")"
+cleanup() { rm -rf "$scratch"; }
+trap cleanup EXIT INT TERM
+
+# --- resource limits --------------------------------------------------------
+# Rootless cgroups need cgroups v2 with cpu+memory delegated to the user slice.
+supports_rootless_cgroups() {
+    [ -e /sys/fs/cgroup/cgroup.controllers ] || return 1
+    local uid controllers
+    uid="$(id -u)"
+    [ "$uid" = 0 ] && return 0
+    controllers="/sys/fs/cgroup/user.slice/user-${uid}.slice/user@${uid}.service/cgroup.controllers"
+    [ -r "$controllers" ] || return 1
+    grep -qw memory "$controllers" && grep -qw cpu "$controllers"
+}
+
+to_bytes() {
+    local value="$1" num unit
+    num="${value%%[!0-9.]*}"
+    unit="${value#"$num"}"
+    if [ -z "$num" ]; then
+        echo "error: invalid size '$value'" >&2
+        exit 2
+    fi
+    case "${unit,,}" in
+        ""|b)   awk "BEGIN{printf \"%d\", $num}" ;;
+        k|kb)   awk "BEGIN{printf \"%d\", $num*1024}" ;;
+        m|mb)   awk "BEGIN{printf \"%d\", $num*1024*1024}" ;;
+        g|gb)   awk "BEGIN{printf \"%d\", $num*1024*1024*1024}" ;;
+        *)      echo "error: unknown size suffix in '$value'" >&2; exit 2 ;;
+    esac
+}
+
+LIMIT_ARGS=()
+if supports_rootless_cgroups; then
+    LIMIT_ARGS=(--memory "$(to_bytes "$MEMORY_LIMIT")" --cpus "$CPU_LIMIT")
+else
+    echo "warning: cgroups v2 delegation unavailable; running without memory/CPU limits" >&2
+fi
+
+# --- environment ------------------------------------------------------------
+# --containall implies --cleanenv, so everything the TUI needs is passed explicitly.
+ENV_ARGS=(
+    --env "TERM=${TERM:-xterm-256color}"
+    --env "LANG=C.UTF-8"
+)
+if [ -n "${COLORTERM:-}" ]; then
+    ENV_ARGS+=(--env "COLORTERM=$COLORTERM")
+fi
+for assignment in ${EXTRA_ENV[@]+"${EXTRA_ENV[@]}"}; do
+    ENV_ARGS+=(--env "$assignment")
+done
+
+# Forward host proxy settings (both cases; tools differ on which they read)
+EFF_HTTP_PROXY="${HTTP_PROXY:-${http_proxy:-}}"
+EFF_HTTPS_PROXY="${HTTPS_PROXY:-${https_proxy:-}}"
+EFF_NO_PROXY="${NO_PROXY:-${no_proxy:-}}"
+if [ -n "$EFF_HTTP_PROXY" ]; then
+    ENV_ARGS+=(--env "HTTP_PROXY=$EFF_HTTP_PROXY" --env "http_proxy=$EFF_HTTP_PROXY")
+fi
+if [ -n "$EFF_HTTPS_PROXY" ]; then
+    ENV_ARGS+=(--env "HTTPS_PROXY=$EFF_HTTPS_PROXY" --env "https_proxy=$EFF_HTTPS_PROXY")
+fi
+if [ -n "$EFF_NO_PROXY" ]; then
+    ENV_ARGS+=(--env "NO_PROXY=$EFF_NO_PROXY" --env "no_proxy=$EFF_NO_PROXY")
+fi
+
+GIT_ARGS=()
+if [ -f "$HOME/.gitconfig" ]; then
+    GIT_ARGS=(
+        --bind "$HOME/.gitconfig:/opt/host-gitconfig:ro"
+        --env "GIT_CONFIG_GLOBAL=/opt/host-gitconfig"
+    )
+fi
+
+# --- run --------------------------------------------------------------------
+# Security posture, versus the docker/podman flags this replaces:
+#   --read-only              -> inherent: the SIF is an immutable squashfs
+#   --cap-drop=ALL           -> inherent: unprivileged user namespace, no capabilities
+#   --security-opt=no-new-privileges -> inherent: NO_NEW_PRIVS + nosuid mounts
+#   USER 1000 / --userns=keep-id     -> inherent: runs as the invoking user
+#   --containall             -> isolates env, IPC, PID, /tmp, /dev and home
+set +e
+"$APPTAINER_BIN" run \
+    --containall \
+    --home "$state_dir:/app" \
+    --workdir "$scratch" \
+    --pwd /workspace \
+    --bind "$WORKSPACE:/workspace:rw" \
+    --bind "$state_dir/config:/app/.config/opencode:rw" \
+    --bind "$state_dir/secrets:/run/secrets:ro" \
+    ${GIT_ARGS[@]+"${GIT_ARGS[@]}"} \
+    ${LIMIT_ARGS[@]+"${LIMIT_ARGS[@]}"} \
+    ${ENV_ARGS[@]+"${ENV_ARGS[@]}"} \
+    "$SIF" "$@"
+status=$?
+set -e
+
+exit "$status"
