@@ -109,7 +109,15 @@ From: debian@sha256:d7e12182ce18b85b93007c1dedf31f2d29e01ccf3182cc4017c709b6259b
     command -v jq
     command -v git
     command -v rustc
-    opencode --version
+    # Roundabout way of running opencode --version since /app has no host bind yet
+    test_home="$(mktemp -d)"
+    HOME="$test_home" \
+    XDG_CONFIG_HOME="$test_home/.config" \
+    XDG_DATA_HOME="$test_home/.local/share" \
+    XDG_CACHE_HOME="$test_home/.cache" \
+    OPENCODE_CONFIG_DIR="$test_home/.config/opencode" \
+        opencode --version
+    rm -rf "$test_home"
 
 %help
     OpenCode CLI in a locked-down Apptainer container.
