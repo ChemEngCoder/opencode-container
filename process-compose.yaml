@@ -52,6 +52,7 @@ processes:
     # in bin/), add `--pwd /opt/llama.cpp/lib` after `--nv`.
     command: >-
       apptainer run --nv
+      --pwd /opt/llama.cpp/lib
       --bind ${MODEL_DIR}:/models
       ${SIF}
       -m ${MODEL}
