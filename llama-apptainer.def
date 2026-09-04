@@ -11,6 +11,29 @@
 #     apptainer run --nv --bind /scratch/models:/models llama-cpp-cuda.sif \
 #         -m /models/model.gguf --n-gpu-layers 999 --host 0.0.0.0 --port 8080
 #
+#  ---------------------------------------------------------------------------
+#  CHANGE IN REV 2 — why the previous revision failed with
+#  "no backends are loaded"
+#  ---------------------------------------------------------------------------
+#  With -DGGML_BACKEND_DL=ON the backends (libggml-cpu-*.so, libggml-cuda.so)
+#  are NOT linked into the executables; ggml_backend_load_all() dlopen's them
+#  at startup. That search does *not* consult LD_LIBRARY_PATH. It looks only in:
+#      1. GGML_BACKEND_DIR      (baked in at compile time, if defined)
+#      2. the directory of the running executable
+#      3. the current working directory
+#      4. whatever GGML_BACKEND_PATH points at
+#  Rev 1 put binaries in bin/ and the .so files in lib/ and set
+#  LD_LIBRARY_PATH — which correctly resolves the *link-time* dependency on
+#  libggml-base.so (so the binary starts) but leaves the *dlopen* search
+#  empty, hence zero backends and the "no usable GPU found" warning even on a
+#  perfectly healthy H100.
+#
+#  Fix: keep the executables and the backend .so files in ONE directory, so
+#  search path (2) always finds them, and set GGML_BACKEND_PATH as a belt-and-
+#  braces second route. The %test section now asserts this rather than only
+#  checking that the file exists somewhere in the image.
+#
+#  -------------------
 #  WHY THIS BASE IMAGE
 #  -------------------
 #  nvidia/cuda:*-devel-ubuntu24.04 (build) + nvidia/cuda:*-runtime-ubuntu24.04
@@ -58,15 +81,17 @@ Stage: build
     export DEBIAN_FRONTEND=noninteractive
 
     # --- knobs -------------------------------------------------------------
-    # Pin this to a tag (e.g. b7412) or a commit SHA for reproducible images.
-    # "master" tracks the latest upstream at build time, as requested.
+    # Pin to a tag (e.g. b7412) or a commit SHA for reproducible images.
     LLAMA_REF="master"
 
     # H100 is compute capability 9.0. "90-real" emits SASS for sm_90 only and
-    # skips the PTX blob, which cuts compile time and image size. Use
-    # "90-real;90-virtual" if you also want forward-compat JIT onto future
-    # architectures, or "80-real;90-real" for a mixed A100/H100 cluster.
-    CUDA_ARCH="80-real;90-real"
+    # skips the PTX blob. Use "80-real;90-real" for a mixed A100/H100 cluster,
+    # or append ";90-virtual" if you want JIT forward-compat onto Blackwell.
+    CUDA_ARCH="90-real"
+
+    # Single directory for executables AND backend modules. This is the whole
+    # point of rev 2 — do not split these apart again.
+    PREFIX="/opt/llama.cpp"
 
     NPROC="$(nproc)"
     # -----------------------------------------------------------------------
@@ -88,7 +113,7 @@ Stage: build
     mkdir -p /src
     cd /src
     # Shallow-clone when LLAMA_REF is a branch or tag; fall back to a full
-    # clone so that a raw commit SHA also works.
+    # clone so a raw commit SHA also works.
     git clone --depth 1 --branch "${LLAMA_REF}" \
         https://github.com/ggml-org/llama.cpp.git llama.cpp \
       || { git clone https://github.com/ggml-org/llama.cpp.git llama.cpp \
@@ -109,42 +134,46 @@ Stage: build
         -DLLAMA_BUILD_SERVER=ON
     #
     #  GGML_NATIVE=OFF          the build host is not the compute host. Without
-    #                           this, -march=native bakes in the build node's
-    #                           ISA and the SIF SIGILLs on any older node.
-    #  GGML_BACKEND_DL=ON  +    backends become dlopen-ed .so files and the CPU
-    #  GGML_CPU_ALL_VARIANTS    backend ships one variant per ISA level, picked
-    #                           at runtime. Together these make one SIF safe to
-    #                           run on a heterogeneous cluster and let it start
-    #                           on a CPU-only login node for --help/quantize.
-    #  LLAMA_CURL=ON            enables `-hf user/repo` model pulls; drop it
-    #                           (and libcurl below) for an air-gapped image.
+    #                           this, -march=native bakes in the builder's ISA
+    #                           and the SIF SIGILLs on an older node.
+    #  GGML_BACKEND_DL=ON  +    backends become dlopen'd .so files and the CPU
+    #  GGML_CPU_ALL_VARIANTS    backend ships one variant per ISA level, chosen
+    #                           at runtime. Together these make one SIF safe on
+    #                           a heterogeneous cluster. If your nodes are
+    #                           uniform and you would rather not think about
+    #                           the dlopen search path at all, set
+    #                           -DGGML_BACKEND_DL=OFF -DGGML_CPU_ALL_VARIANTS=OFF
+    #                           and the backends are linked straight in.
+    #  LLAMA_CURL=ON            enables `-hf user/repo` pulls; drop it (and
+    #                           libcurl) for an air-gapped image.
     #
     #  Optional, deliberately off:
-    #  -DGGML_CUDA_FA_ALL_QUANTS=ON   every KV-cache quant combo for flash
-    #                                 attention. Adds a lot of compile time;
-    #                                 on H100 with 80GB you rarely need
-    #                                 anything below q8_0 KV.
-    #  -DGGML_CUDA_FORCE_MMQ=ON       force the custom quantised matmul kernels
-    #                                 instead of letting ggml pick cuBLAS.
+    #  -DGGML_CUDA_FA_ALL_QUANTS=ON   all KV-cache quant combos for flash
+    #                                 attention; large compile-time cost.
+    #  -DGGML_CUDA_FORCE_MMQ=ON       force custom quantised matmul kernels.
 
     cmake --build build --config Release -j "${NPROC}"
 
-    # Lay the artefacts out as bin/ + lib/ so LD_LIBRARY_PATH is enough for
-    # ggml to find the dlopen-able backends (libggml-cuda.so et al).
-    mkdir -p /opt/llama.cpp/bin /opt/llama.cpp/lib
+    # ---- flat layout: executables and every .so in the SAME directory ------
+    mkdir -p "${PREFIX}/bin"
     find build/bin -maxdepth 1 -type f -executable ! -name '*.so*' \
-        -exec cp {} /opt/llama.cpp/bin/ \;
-    find build -name '*.so*' -exec cp -P {} /opt/llama.cpp/lib/ \;
-    cp LICENSE /opt/llama.cpp/ || true
+        -exec cp {} "${PREFIX}/bin/" \;
+    find build -name '*.so*' -exec cp -P {} "${PREFIX}/bin/" \;
+    cp LICENSE "${PREFIX}/" || true
 
-    # Record exactly what went in — invaluable when a job regresses months later.
+    # Fail the build here rather than at 3am on a compute node.
+    test -f "${PREFIX}/bin/llama-server"
+    test -f "${PREFIX}/bin/libggml-cuda.so"
+    ls "${PREFIX}/bin"/libggml-cpu*.so >/dev/null
+
     {
         echo "llama.cpp ref:     ${LLAMA_REF}"
         echo "llama.cpp commit:  $(git rev-parse HEAD)"
         echo "cuda arch:         ${CUDA_ARCH}"
         echo "nvcc:              $(nvcc --version | tail -n2 | head -n1)"
         echo "built:             $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    } > /opt/llama.cpp/BUILD_INFO
+        echo "backend modules:   $(cd "${PREFIX}/bin" && ls libggml-*.so | tr '\n' ' ')"
+    } > "${PREFIX}/BUILD_INFO"
 
 # -----------------------------------------------------------------------------
 # Stage 2 — runtime
@@ -167,22 +196,29 @@ Stage: final
              || apt-get install -y --no-install-recommends libcurl4; }
     rm -rf /var/lib/apt/lists/*
 
-    # Mount points for a read-only SIF: bind your model store and cache here.
     mkdir -p /models /workspace
     chmod 1777 /workspace
 
 %environment
     export LLAMA_HOME=/opt/llama.cpp
     export PATH="${LLAMA_HOME}/bin:${PATH}"
-    # Appended, never overwritten: Apptainer puts the host driver libraries
-    # injected by --nv on LD_LIBRARY_PATH (/.singularity.d/libs) and clobbering
-    # it is the classic "cannot find libcuda.so.1" failure.
-    export LD_LIBRARY_PATH="${LLAMA_HOME}/lib:${LD_LIBRARY_PATH:-}"
-    # Models downloaded with -hf land here; bind it or the container writes to
-    # $HOME, which on many clusters is quota'd and slow.
+    # Backend discovery. ggml does NOT read LD_LIBRARY_PATH for this — the
+    # executable-directory search is what actually finds the modules, and this
+    # variable is the explicit second route.
+    export GGML_BACKEND_PATH="${LLAMA_HOME}/bin"
+    # Link-time resolution of libggml-base.so etc. Appended, never overwritten:
+    # Apptainer puts the host driver libraries injected by --nv on
+    # LD_LIBRARY_PATH (/.singularity.d/libs), and clobbering that is the
+    # classic "cannot find libcuda.so.1" failure. Note that Apptainer may
+    # replace this with the host's value if the host has LD_LIBRARY_PATH set
+    # (module systems do) — which is exactly why backend discovery must not
+    # depend on it.
+    export LD_LIBRARY_PATH="${LLAMA_HOME}/bin:${LD_LIBRARY_PATH:-}"
+    # Models downloaded with -hf land here; bind it, or the container writes to
+    # $HOME, which on most clusters is quota'd and slow.
     export LLAMA_CACHE="${LLAMA_CACHE:-/workspace/.cache/llama.cpp}"
     # Uncomment to let the CUDA allocator spill into host memory (useful for
-    # oversized KV caches; costs PCIe bandwidth when it triggers).
+    # oversized KV caches; costs PCIe bandwidth whenever it triggers).
     # export GGML_CUDA_ENABLE_UNIFIED_MEMORY=1
 
 %runscript
@@ -210,14 +246,19 @@ Stage: final
     exec /opt/llama.cpp/bin/llama-perplexity "$@"
 
 %test
-    # Runs at build time, where there is usually no GPU — so this checks that
-    # the binaries link and that the CUDA backend object is present, not that
-    # a device is visible. Verify the device separately with:
+    # Runs at build time, usually without a GPU. It cannot prove a device is
+    # visible, but it CAN prove the backends load — which is the failure rev 1
+    # shipped. Device visibility is checked separately at runtime with:
     #   apptainer exec --nv llama-cpp-cuda.sif llama-cli --list-devices
     set -e
-    /opt/llama.cpp/bin/llama-cli --version
-    test -f /opt/llama.cpp/lib/libggml-cuda.so
-    echo "OK: llama.cpp binaries and CUDA backend present"
+    test -f /opt/llama.cpp/bin/libggml-cuda.so
+    ldd /opt/llama.cpp/bin/libggml-cuda.so | grep -v libcuda.so.1 \
+        | grep 'not found' && { echo "FAIL: unresolved deps"; exit 1; } || true
+    out="$(/opt/llama.cpp/bin/llama-cli --list-devices 2>&1)"
+    echo "$out"
+    echo "$out" | grep -q 'load_backend' \
+        || { echo "FAIL: no backend was dlopen'd"; exit 1; }
+    echo "OK: backends load"
     cat /opt/llama.cpp/BUILD_INFO
 
 %labels
