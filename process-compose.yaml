@@ -1,0 +1,101 @@
+# =============================================================================
+#  process-compose.yaml — supervises the llama.cpp server only
+#
+#  The frontend is deliberately NOT here. process-compose owns the backend
+#  (restart policy, health gating, logs, GPU release on failure); you run the
+#  frontend yourself in a second terminal, where it can own the TTY without
+#  fighting the process-compose TUI.
+#
+#  ---------------------------------------------------------------------------
+#  USAGE
+#
+#  Inside a Slurm allocation, pane 1 (headless — no TTY under sbatch):
+#      process-compose up -f process-compose.yaml -p 9099 -t=false
+#
+#  ...or with the TUI, in an interactive allocation (salloc + srun --pty):
+#      process-compose up -f process-compose.yaml -p 9099
+#
+#  -p 9099 moves process-compose's own REST API off its default port 8080,
+#  which is the port people habitually give llama-server. Leave it on 8080 and
+#  the two collide.
+#
+#  Pane 2 — wait for the model, then run the frontend:
+#      until curl -sf localhost:8081/health >/dev/null; do sleep 2; done
+#      apptainer run /scratch/user/opencode-container/images/frontend.sif \
+#          --api-base http://127.0.0.1:8081/v1
+#
+#  Teardown: F10 in the TUI, or Ctrl-C / `process-compose down -p 9099`.
+# =============================================================================
+
+version: "0.5"
+
+environment:
+  # Do NOT set CUDA_VISIBLE_DEVICES here — process-compose passes its own
+  # environment to children, and overriding it would clobber what Slurm
+  # assigned (which on a MIG node is a compute-instance UUID, not an index).
+
+processes:
+
+  llama-server:
+    # Foreground, NOT `apptainer instance start`. process-compose is the
+    # supervisor; a self-daemonising command would look like an immediate
+    # clean exit to it. The %runscript uses `exec`, so llama-server is PID 1
+    # inside the container and SIGTERM reaches it directly rather than being
+    # swallowed by a wrapper shell.
+    #
+    # --host 127.0.0.1: on a shared compute node, 0.0.0.0 exposes your GPU and
+    # your prompts to every other user on that node. If the frontend really
+    # must live elsewhere, use 0.0.0.0 together with --api-key, and prefer an
+    # SSH tunnel over open exposure.
+    #
+    # If you are still running the pre-rev-2 SIF (backends in lib/, binaries
+    # in bin/), add `--pwd /opt/llama.cpp/lib` after `--nv`.
+    command: >-
+      apptainer run --nv
+      --bind ${MODEL_DIR}:/models
+      ${SIF}
+      -m ${MODEL}
+      --n-gpu-layers 999
+      --ctx-size 262144
+      --host 127.0.0.1
+      --port ${LLAMA_PORT}
+
+    # /health returns 503 while the model loads and 200 once it is resident.
+    # Nothing in this file depends on it now that the frontend is external,
+    # but it is what makes `process-compose process list` and the REST API
+    # report Ready rather than merely Running — and it turns a wedged server
+    # into a visible unhealthy state instead of a silent one.
+    #
+    # The port is a literal int here; probes do not expand ${LLAMA_PORT}.
+    # This is the one place the value is duplicated — keep them in sync.
+    readiness_probe:
+      http_get:
+        host: 127.0.0.1
+        scheme: http
+        path: "/health"
+        port: 8081
+      initial_delay_seconds: 5
+      period_seconds: 3
+      timeout_seconds: 5
+      failure_threshold: 60          # 60 x 3s = 3 minutes to load
+
+    availability:
+      # Deliberately not `always`. If the GPU is busy or the model path is
+      # wrong, an unbounded restart loop hammers the node and buries the real
+      # error partway up a very long log.
+      restart: on_failure
+      backoff_seconds: 10
+      max_restarts: 3
+      # Once restarts are exhausted, let process-compose exit so the Slurm job
+      # ends and releases the H100 — rather than holding a reserved GPU idle
+      # for the rest of the allocation. Set this to false if you would rather
+      # keep the allocation alive to debug interactively.
+      exit_on_end: true
+
+    shutdown:
+      signal: 15                     # SIGTERM; llama-server exits cleanly
+      timeout_seconds: 30            # let in-flight requests drain; VRAM is
+                                     # not reclaimed until the process is gone
+
+    log_location: ./logs/llama-server.log
+    disable_ansi_colors: true
