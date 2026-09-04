@@ -57,9 +57,10 @@ processes:
       ${SIF}
       -m ${MODEL}
       --n-gpu-layers 999
-      --ctx-size 262144
+      --ctx-size 162304
       --host 127.0.0.1
       --port ${LLAMA_PORT}
+
 
     # /health returns 503 while the model loads and 200 once it is resident.
     # Nothing in this file depends on it now that the frontend is external,
