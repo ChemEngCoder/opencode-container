@@ -75,7 +75,7 @@ processes:
         host: 127.0.0.1
         scheme: http
         path: "/health"
-        port: 8081
+        port: ${LLAMA_PORT}
       initial_delay_seconds: 5
       period_seconds: 3
       timeout_seconds: 5
