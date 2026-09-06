@@ -1,0 +1,95 @@
+version: "0.5"
+
+# Host-side supervision for the OpenCode socket setup.
+#
+#   llama-server  ->  listens on 127.0.0.1:${LLAMA_PORT} (host loopback only)
+#   llm-socket    ->  socat bridge from a Unix socket to that port
+#
+# The OpenCode container then runs with --no-net: private empty netns, with the
+# Unix socket as the only path out. Nothing here needs privileges.
+#
+# Override any of these in the environment, or in a .env file next to this one:
+#   LLAMA_BIN, LLAMA_MODEL, LLAMA_PORT, LLAMA_CTX, LLAMA_NGL, LLM_SOCKET_DIR
+
+environment:
+  - "LLAMA_BIN=${LLAMA_BIN:-llama-server}"
+  - "LLAMA_PORT=${LLAMA_PORT:-11434}"
+  - "LLAMA_CTX=${LLAMA_CTX:-16384}"
+  - "LLAMA_NGL=${LLAMA_NGL:-999}"
+  - "LLM_SOCKET_DIR=${LLM_SOCKET_DIR:-${XDG_RUNTIME_DIR}/opencode}"
+
+processes:
+
+  # ---------------------------------------------------------------------
+  # 1. The model server. Bound to loopback only -- the socket relay is the
+  #    sole consumer, so there is no reason to listen on 0.0.0.0.
+  # ---------------------------------------------------------------------
+  llama-server:
+    command: >
+      ${LLAMA_BIN}
+      --model ${LLAMA_MODEL}
+      --host 127.0.0.1
+      --port ${LLAMA_PORT}
+      --ctx-size ${LLAMA_CTX}
+      --n-gpu-layers ${LLAMA_NGL}
+      --alias local-model
+    availability:
+      restart: on_failure
+      backoff_seconds: 5
+    readiness_probe:
+      http_get:
+        host: 127.0.0.1
+        port: ${LLAMA_PORT}
+        path: /health
+      # Large models take a while to load; be generous rather than flapping.
+      initial_delay_seconds: 10
+      period_seconds: 5
+      timeout_seconds: 5
+      failure_threshold: 60
+    shutdown:
+      signal: 15
+      timeout_seconds: 30
+
+  # ---------------------------------------------------------------------
+  # 2. The Unix socket bridge. mode=0600 is the access control: only your
+  #    UID can connect, including from inside the container.
+  #    unlink-early clears a stale socket left by an unclean shutdown.
+  # ---------------------------------------------------------------------
+  llm-socket:
+    command: >
+      sh -c 'mkdir -p "${LLM_SOCKET_DIR}" && chmod 700 "${LLM_SOCKET_DIR}" &&
+      exec socat
+      UNIX-LISTEN:"${LLM_SOCKET_DIR}/llm.sock",fork,mode=0600,unlink-early
+      TCP:127.0.0.1:${LLAMA_PORT}'
+    depends_on:
+      llama-server:
+        condition: process_healthy
+    availability:
+      restart: on_failure
+      backoff_seconds: 2
+    readiness_probe:
+      exec:
+        command: 'test -S "${LLM_SOCKET_DIR}/llm.sock"'
+      initial_delay_seconds: 1
+      period_seconds: 5
+      failure_threshold: 6
+    shutdown:
+      signal: 15
+      timeout_seconds: 5
+
+  # ---------------------------------------------------------------------
+  # 3. One-shot check. Fails loudly if the socket cannot actually serve the
+  #    OpenAI-compatible API, rather than leaving you to debug it from
+  #    inside the container.
+  # ---------------------------------------------------------------------
+  verify:
+    command: >
+      sh -c 'curl -sf --unix-socket "${LLM_SOCKET_DIR}/llm.sock"
+      http://localhost/v1/models > /dev/null
+      && echo "OK: socket serves /v1/models"
+      || { echo "FAIL: socket did not answer" >&2; exit 1; }'
+    depends_on:
+      llm-socket:
+        condition: process_healthy
+    availability:
+      restart: "no"
