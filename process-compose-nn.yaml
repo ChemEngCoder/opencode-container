@@ -59,24 +59,27 @@ processes:
   # ---------------------------------------------------------------------
   llm-socket:
     command: >
-      exec socat
-      UNIX-LISTEN:"${LLM_SOCKET_DIR}/llm.sock",fork,mode=0600,unlink-early
-      TCP:127.0.0.1:${LLAMA_PORT}
-    depends_on:
-      llama-server:
-        condition: process_healthy
-    availability:
-      restart: on_failure
-      backoff_seconds: 2
-    readiness_probe:
-      exec:
-        command: 'test -S "${LLM_SOCKET_DIR}/llm.sock"'
-      initial_delay_seconds: 1
-      period_seconds: 5
-      failure_threshold: 6
-    shutdown:
-      signal: 15
-      timeout_seconds: 5
+      llama-server --help | grep -iE 'unix|socket|--path'
+  #llm-socket:
+  #  command: >
+  #    exec socat
+  #    UNIX-LISTEN:"${LLM_SOCKET_DIR}/llm.sock",fork,mode=0600,unlink-early
+  #    TCP:127.0.0.1:${LLAMA_PORT}
+  #  depends_on:
+  #    llama-server:
+  #      condition: process_healthy
+  #  availability:
+  #    restart: on_failure
+  #   backoff_seconds: 2
+  #  readiness_probe:
+  #    exec:
+  #      command: 'test -S "${LLM_SOCKET_DIR}/llm.sock"'
+  #    initial_delay_seconds: 1
+  #    period_seconds: 5
+  #    failure_threshold: 6
+  #  shutdown:
+  #    signal: 15
+  #    timeout_seconds: 5
 
   # ---------------------------------------------------------------------
   # 3. One-shot check. Fails loudly if the socket cannot actually serve the
