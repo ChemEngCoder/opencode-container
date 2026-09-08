@@ -77,7 +77,8 @@ From: debian@sha256:d7e12182ce18b85b93007c1dedf31f2d29e01ccf3182cc4017c709b6259b
     mkdir -p /ngstools/bin/
 
     # Download, extract, and clean up directly inside the target directory using absolute paths
-    wget -P /ngstools/bin/ https://github.com/marbl/Mash/releases/download/v2.0/mash-Linux64-v2.0.tar
+    curl -L /ngstools/bin/ https://github.com/marbl/Mash/releases/download/v2.0/mash-Linux64-v2.0.tar \
+        -o /ngstools/bin/mash-Linux64-v2.0.tar
     tar -xvf /ngstools/bin/mash-Linux64-v2.0.tar -C /ngstools/bin/
     rm /ngstools/bin/mash-Linux64-v2.0.tar
 
