@@ -59,7 +59,6 @@ processes:
   # ---------------------------------------------------------------------
   llm-socket:
     command: >
-      sh -c 'mkdir -p "${LLM_SOCKET_DIR}" && chmod 700 "${LLM_SOCKET_DIR}" &&
       exec socat
       UNIX-LISTEN:"${LLM_SOCKET_DIR}/llm.sock",fork,mode=0600,unlink-early
       TCP:127.0.0.1:${LLAMA_PORT}'
