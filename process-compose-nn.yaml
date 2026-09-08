@@ -25,25 +25,39 @@ processes:
   #    sole consumer, so there is no reason to listen on 0.0.0.0.
   # ---------------------------------------------------------------------
   llama-server:
+    #command: >
+    #  apptainer run --nv
+    #  --pwd /opt/llama.cpp/lib
+    #  --bind ${MODEL_DIR}:/models
+    #  --bind $LLM_SOCKET_DIR="${LLM_SOCKET_DIR:-${XDG_RUNTIME_DIR}/opencode}}"
+    #  ${LLAMA_SIF}
+    #  --model ${LLAMA_MODEL}
+    #  --host 127.0.0.1
+    #  --port ${LLAMA_PORT}
+    #  --ctx-size ${LLAMA_CTX}
+    #  --alias local-model
     command: >
-      apptainer run --nv
-      --pwd /opt/llama.cpp/lib
-      --bind ${MODEL_DIR}:/models
-      --bind $LLM_SOCKET_DIR="${LLM_SOCKET_DIR:-${XDG_RUNTIME_DIR}/opencode}}"
+      apptainer exec --nv
+      --net --network none
+      --bind ${MODEL_DIR}:/models:ro
+      --bind ${LLM_SOCKET_DIR}:/run/llm:rw
+      --bind ${PWD}/llama:/opt/scripts:ro
+      --env LLAMA_MODEL=${LLZMZ_MODEL}
+      --env LLAMA_PORT=${LLAMA_PORT}
+      --env LLAMA_CTX=${LLAMA_CTX}
+      --env LLAMA_NGL=${LLAMA_NGL}
       ${LLAMA_SIF}
-      --model ${LLAMA_MODEL}
-      --host 127.0.0.1
-      --port ${LLAMA_PORT}
-      --ctx-size ${LLAMA_CTX}
-      --alias local-model
+      sh /opt/scripts/llama-serve.sh
     availability:
       restart: on_failure
       backoff_seconds: 5
     readiness_probe:
-      http_get:
-        host: 127.0.0.1
-        port: ${LLAMA_PORT}
-        path: /health
+      #http_get:
+      #  host: 127.0.0.1
+      #  port: ${LLAMA_PORT}
+      #  path: /health
+      exec:
+        command: 'curl -sf --unix-socket "${LLM_SOCKET_DIR}/llm.sock" http://localhost/v1/models'
       # Large models take a while to load; be generous rather than flapping.
       initial_delay_seconds: 10
       period_seconds: 5
@@ -63,24 +77,24 @@ processes:
   #    exec socat
   #    UNIX-LISTEN:"${LLM_SOCKET_DIR}/llm.sock",fork,mode=0600,unlink-early
   #    TCP:127.0.0.1:${LLAMA_PORT}
-  llm-socket:
-    command: >
-      llama-server --help | grep -iE 'unix|socket|--path'
-    depends_on:
-      llama-server:
-        condition: process_healthy
-    availability:
-      restart: on_failure
-      backoff_seconds: 2
-    readiness_probe:
-      exec:
-        command: 'test -S "${LLM_SOCKET_DIR}/llm.sock"'
-      initial_delay_seconds: 1
-      period_seconds: 5
-      failure_threshold: 6
-    shutdown:
-      signal: 15
-      timeout_seconds: 5
+  #llm-socket:
+  #  command: >
+  #    llama-server --help | grep -iE 'unix|socket|--path'
+  #  depends_on:
+  #    llama-server:
+  #      condition: process_healthy
+  # availability:
+  #    restart: on_failure
+  #    backoff_seconds: 2
+  #  readiness_probe:
+  #    exec:
+  #      command: 'test -S "${LLM_SOCKET_DIR}/llm.sock"'
+  #    initial_delay_seconds: 1
+  #    period_seconds: 5
+  #    failure_threshold: 6
+  #  shutdown:
+  #    signal: 15
+  #    timeout_seconds: 5
 
   # ---------------------------------------------------------------------
   # 3. One-shot check. Fails loudly if the socket cannot actually serve the
