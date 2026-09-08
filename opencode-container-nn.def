@@ -72,6 +72,15 @@ From: debian@sha256:d7e12182ce18b85b93007c1dedf31f2d29e01ccf3182cc4017c709b6259b
     npm install -g @upstash/context7-mcp@{{ CONTEXT7_MCP_VERSION }}
     npm cache clean --force
 
+    # --- MASH 2.0 ------------------------------------------------------------
+    # Create the target directory if it doesn't already exist
+    mkdir -p /ngstools/bin/
+
+    # Download, extract, and clean up directly inside the target directory using absolute paths
+    wget -P /ngstools/bin/ https://github.com/marbl/Mash/releases/download/v2.0/mash-Linux64-v2.0.tar
+    tar -xvf /ngstools/bin/mash-Linux64-v2.0.tar -C /ngstools/bin/
+    rm /ngstools/bin/mash-Linux64-v2.0.tar
+
     # --- Runtime entrypoint ------------------------------------------------
     chmod 0755 /usr/local/bin/bootstrap.py
 
@@ -122,6 +131,7 @@ From: debian@sha256:d7e12182ce18b85b93007c1dedf31f2d29e01ccf3182cc4017c709b6259b
     export XDG_CACHE_HOME=/app/.cache
     export PATH=/usr/local/bin:/usr/bin:/bin
     # HOME is set by the launcher via `--home <state-dir>:/app`.
+    export PATH="/ngstools/bin/mash-Linux64-v2.0:$PATH"
 
 %runscript
     exec /usr/bin/python3 /usr/local/bin/bootstrap.py "$@"
