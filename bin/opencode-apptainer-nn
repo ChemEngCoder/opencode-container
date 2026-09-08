@@ -34,7 +34,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_dir="${OPENCODE_CONTAINER_REPO:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 
 # --- container runtime ------------------------------------------------------
-APPTAINER_BIN==apptainer
+APPTAINER_BIN=apptainer
 
 # --- host state -------------------------------------------------------------
 state_dir="${OPENCODE_STATE_DIR:-$HOME/.opencode-apptainer}"
