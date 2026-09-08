@@ -29,7 +29,8 @@ processes:
       apptainer run --nv
       --pwd /opt/llama.cpp/lib
       --bind ${MODEL_DIR}:/models
-      ${SIF}
+      --bind $LLM_SOCKET_DIR="${LLM_SOCKET_DIR:-${XDG_RUNTIME_DIR}/opencode}}"
+      ${LLAMA_SIF}
       --model ${LLAMA_MODEL}
       --host 127.0.0.1
       --port ${LLAMA_PORT}
