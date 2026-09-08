@@ -14,7 +14,7 @@ version: "0.5"
 environment:
   - "LLAMA_BIN=${LLAMA_BIN:-llama-server}"
   - "LLAMA_PORT=${LLAMA_PORT:-11434}"
-  - "LLAMA_CTX=${LLAMA_CTX:-16384}"
+  - "LLAMA_CTX=${LLAMA_CTX:-162304}"
   - "LLAMA_NGL=${LLAMA_NGL:-999}"
   - "LLM_SOCKET_DIR=${LLM_SOCKET_DIR:-${XDG_RUNTIME_DIR}/opencode}"
 
@@ -34,7 +34,6 @@ processes:
       --host 127.0.0.1
       --port ${LLAMA_PORT}
       --ctx-size ${LLAMA_CTX}
-      --n-gpu-layers ${LLAMA_NGL}
       --alias local-model
     availability:
       restart: on_failure
