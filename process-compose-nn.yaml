@@ -61,7 +61,7 @@ processes:
     command: >
       exec socat
       UNIX-LISTEN:"${LLM_SOCKET_DIR}/llm.sock",fork,mode=0600,unlink-early
-      TCP:127.0.0.1:${LLAMA_PORT}'
+      TCP:127.0.0.1:${LLAMA_PORT}
     depends_on:
       llama-server:
         condition: process_healthy
