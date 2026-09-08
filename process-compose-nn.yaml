@@ -26,7 +26,10 @@ processes:
   # ---------------------------------------------------------------------
   llama-server:
     command: >
-      ${LLAMA_BIN}
+      apptainer run --nv
+      --pwd /opt/llama.cpp/lib
+      --bind ${MODEL_DIR}:/models
+      ${SIF}
       --model ${LLAMA_MODEL}
       --host 127.0.0.1
       --port ${LLAMA_PORT}
