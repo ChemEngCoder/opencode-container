@@ -90,7 +90,7 @@ From: debian@sha256:d7e12182ce18b85b93007c1dedf31f2d29e01ccf3182cc4017c709b6259b
     # be a bind mount and every mount point must already exist in the image.
     # No chown is needed: Apptainer runs the container as the invoking user,
     # and each of these directories is covered by a host bind at runtime.
-    mkdir -p /workspace /run/secrets /run/llm /app/.config/opencode \ 
+    mkdir -p /workspace /run/secrets /run/llm /app/.config/opencode \
              /app/.local/share /app/.cache
     chmod 0755 /workspace /run/secrets /app
 
