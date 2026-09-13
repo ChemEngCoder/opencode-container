@@ -42,7 +42,7 @@ processes:
       --bind ${MODEL_DIR}:/models:ro
       --bind ${LLM_SOCKET_DIR}:/run/llm:rw
       --bind ${PWD}/llama:/opt/scripts:ro
-      --env LLAMA_MODEL=${LLZMZ_MODEL}
+      --env LLAMA_MODEL=${LLAMA_MODEL}
       --env LLAMA_PORT=${LLAMA_PORT}
       --env LLAMA_CTX=${LLAMA_CTX}
       --env LLAMA_NGL=${LLAMA_NGL}
