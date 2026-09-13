@@ -141,7 +141,7 @@ Stage: final
              || apt-get install -y --no-install-recommends libcurl4; }
     rm -rf /var/lib/apt/lists/*
 
-    mkdir -p /models /workspace
+    mkdir -p /models /workspace /run/llm
     chmod 1777 /workspace
 
 %environment
