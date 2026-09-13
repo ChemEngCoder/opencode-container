@@ -1,0 +1,119 @@
+version: "0.5"
+
+# Host-side supervision for the OpenCode provider gateway.
+#
+#   provider   -> nginx in a container, listening on a Unix socket, forwarding to
+#               one external API host over TLS with the key injected
+#   verify   -> one-shot end-to-end check
+#
+# The OpenCode container then runs with --no-net and reaches the API only
+# through that socket. Nothing here needs privileges.
+#
+# Config lives in a .env file next to this one:
+#   LLM_SOCKET_DIR=/run/user/1000/opencode
+#   PROVIDER_SIF=/home/you/git/opencode-container/images/opencode-provider.sif
+#   PROVIDER_UPSTREAM_HOST=api.anthropic.com
+#   PROVIDER_AUTH_STYLE=anthropic
+#   PROVIDER_KEY_NAME=anthropic_api_key
+#   PROVIDER_LOG_DIR=/home/you/.opencode-apptainer/logs
+#   PROVIDER_ACCESS_LOG=/var/log/provider/access.log
+#   PROVIDER_LOG_BODY=0
+
+environment:
+  - "LLM_SOCKET_DIR=${LLM_SOCKET_DIR:-${XDG_RUNTIME_DIR}/opencode}"
+  - "PROVIDER_AUTH_STYLE=${PROVIDER_AUTH_STYLE:-anthropic}"
+  - "PROVIDER_KEY_NAME=${PROVIDER_KEY_NAME:-anthropic_api_key}"
+  - "PROVIDER_SECRETS_DIR=${PROVIDER_SECRETS_DIR:-${HOME}/.opencode-apptainer/provider-secrets}"
+  - "PROVIDER_LOG_DIR=${PROVIDER_LOG_DIR:-${HOME}/.opencode-apptainer/logs}"
+  - "PROVIDER_ACCESS_LOG=${PROVIDER_ACCESS_LOG:-stdout}"
+  - "PROVIDER_LOG_BODY=${PROVIDER_LOG_BODY:-0}"
+  - "PROVIDER_READ_TIMEOUT=${PROVIDER_READ_TIMEOUT:-600s}"
+
+processes:
+
+  # ---------------------------------------------------------------------
+  # 0. Pre-flight. Fails fast with a readable message rather than letting
+  #    nginx or apptainer produce something cryptic.
+  # ---------------------------------------------------------------------
+  preflight:
+    command: >
+      sh -c '
+      set -e;
+      mkdir -p "${LLM_SOCKET_DIR}"; chmod 700 "${LLM_SOCKET_DIR}";
+      mkdir -p "${PROVIDER_LOG_DIR}";  chmod 700 "${PROVIDER_LOG_DIR}";
+      test -n "${PROVIDER_UPSTREAM_HOST}" || { echo "PROVIDER_UPSTREAM_HOST is not set" >&2; exit 1; };
+      test -f "${PROVIDER_SIF}" || { echo "no gateway image at ${PROVIDER_SIF}" >&2; exit 1; };
+      test -r "${PROVIDER_SECRETS_DIR}/${PROVIDER_KEY_NAME}" ||
+        { echo "no API key at ${PROVIDER_SECRETS_DIR}/${PROVIDER_KEY_NAME}" >&2; exit 1; };
+      echo "preflight OK: -> ${PROVIDER_UPSTREAM_HOST}, socket ${LLM_SOCKET_DIR}"
+      '
+    availability:
+      restart: "no"
+
+  # ---------------------------------------------------------------------
+  # 1. The gateway. Shares the host network namespace (it needs egress);
+  #    the socket dir is bound :rw because nginx creates the socket.
+  # ---------------------------------------------------------------------
+  provider:
+    command: >
+      apptainer run
+      --containall
+      --workdir ${TMPDIR:-/tmp}
+      --bind ${LLM_SOCKET_DIR}:/run/llm:rw
+      --bind ${PROVIDER_SECRETS_DIR}:/run/secrets:ro
+      --bind ${PROVIDER_LOG_DIR}:/var/log/provider:rw
+      --env PROVIDER_UPSTREAM_HOST=${PROVIDER_UPSTREAM_HOST}
+      --env PROVIDER_AUTH_STYLE=${PROVIDER_AUTH_STYLE}
+      --env PROVIDER_API_KEY_FILE=/run/secrets/${PROVIDER_KEY_NAME}
+      --env PROVIDER_ACCESS_LOG=${PROVIDER_ACCESS_LOG}
+      --env PROVIDER_LOG_BODY=${PROVIDER_LOG_BODY}
+      --env PROVIDER_READ_TIMEOUT=${PROVIDER_READ_TIMEOUT}
+      ${PROVIDER_SIF}
+    depends_on:
+      preflight:
+        condition: process_completed_successfully
+    availability:
+      restart: on_failure
+      backoff_seconds: 5
+    # /healthz is answered locally by nginx, so readiness checks cost no
+    # upstream API calls.
+    readiness_probe:
+      exec:
+        command: 'curl -sf --unix-socket "${LLM_SOCKET_DIR}/llm.sock" http://localhost/healthz'
+      initial_delay_seconds: 2
+      period_seconds: 5
+      timeout_seconds: 5
+      failure_threshold: 12
+    shutdown:
+      signal: 15
+      timeout_seconds: 10
+
+  # ---------------------------------------------------------------------
+  # 2. End-to-end check. /healthz proves nginx is up; this proves the
+  #    socket, the TLS leg and the injected key all work together.
+  #    Costs one cheap upstream call.
+  # ---------------------------------------------------------------------
+  verify:
+    command: >
+      sh -c '
+      code=$(curl -s -o /tmp/provider-verify.$$ -w "%{http_code}"
+        --unix-socket "${LLM_SOCKET_DIR}/llm.sock"
+        http://localhost/v1/models);
+      case "$code" in
+        200) echo "OK: upstream answered 200 through the socket" ;;
+        401|403) echo "FAIL: upstream rejected the injected key (http $code)" >&2;
+                 echo "      check PROVIDER_AUTH_STYLE and the key file" >&2; exit 1 ;;
+        404) echo "NOTE: http 404 -- socket and auth work, but this upstream has"
+             echo "      no /v1/models. Fine for Anthropic; check baseURL in"
+             echo "      opencode.json instead." ;;
+        000) echo "FAIL: could not reach the socket" >&2; exit 1 ;;
+        *)   echo "FAIL: unexpected http $code" >&2;
+             head -c 400 /tmp/provider-verify.$$ >&2; exit 1 ;;
+      esac;
+      rm -f /tmp/provider-verify.$$
+      '
+    depends_on:
+      provider:
+        condition: process_healthy
+    availability:
+      restart: "no"

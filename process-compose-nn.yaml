@@ -108,7 +108,7 @@ processes:
       && echo "OK: socket serves /v1/models"
       || { echo "FAIL: socket did not answer" >&2; exit 1; }'
     depends_on:
-      llm-socket:
+      llama-server:
         condition: process_healthy
     availability:
       restart: "no"

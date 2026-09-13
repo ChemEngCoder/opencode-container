@@ -1,0 +1,181 @@
+# ---------------------------------------------------------------------------
+# OpenCode on a CUDA-enabled Ubuntu 24.04 base.
+#
+# Bootstrap types:
+#   Bootstrap: docker        + From: registry.example/img@sha256:...  (registry)
+#   Bootstrap: docker-daemon + From: my-cuda-base:latest              (local docker)
+#   Bootstrap: localimage    + From: /path/to/base.sif                (local SIF)
+# ---------------------------------------------------------------------------
+Bootstrap: localimage
+From: {{ BASE_IMAGE }}
+
+%arguments
+    BASE_IMAGE=nvidia/
+    OPENCODE_VERSION=1.18.25
+    OPENCODE_INSTALLER_SHA256=fc3c1b2123f49b6df545a7622e5127d21cd794b15134fc3b66e1ca49f7fb297e
+    NODE_MAJOR=24
+    CONTEXT7_MCP_VERSION=4.0.4
+
+%labels
+    org.opencontainers.image.title      opencode-cuda-ubuntu2404
+    org.opencontainers.image.description OpenCode CLI on a CUDA / Ubuntu 24.04 base
+    opencode.version                    {{ OPENCODE_VERSION }}
+    base.image                          {{ BASE_IMAGE }}
+
+%files
+    bootstrap.py /usr/local/bin/bootstrap.py
+
+%post
+    set -eux
+    export DEBIAN_FRONTEND=noninteractive
+
+    # NVIDIA rotates the CUDA apt signing key periodically, which makes
+    # `apt-get update` fail on older base images. If that happens, uncomment:
+    # rm -f /etc/apt/sources.list.d/cuda*.list /etc/apt/sources.list.d/nvidia*.list
+
+    apt-get update
+    apt-get install --no-install-recommends -y \
+        ca-certificates \
+        curl \
+        socat \
+        iproute2 \
+        gnupg \
+        git \
+        xvfb \
+        xclip \
+        wl-clipboard \
+        ripgrep \
+        jq \
+        rustc \
+        cargo
+    rm -rf /var/lib/apt/lists/*
+
+    # --- Node.js from NodeSource ------------------------------------------
+    mkdir -p /etc/apt/keyrings
+    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+        | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_{{ NODE_MAJOR }}.x nodistro main" \
+        > /etc/apt/sources.list.d/nodesource.list
+    apt-get update
+    apt-get install --no-install-recommends -y nodejs
+    rm -rf /var/lib/apt/lists/*
+
+    # --- OpenCode (checksum-verified official installer) -------------------
+    echo "Installing OpenCode version: {{ OPENCODE_VERSION }}"
+    curl -fsSL https://opencode.ai/install -o /tmp/install-opencode.sh
+    echo "{{ OPENCODE_INSTALLER_SHA256 }}  /tmp/install-opencode.sh" | sha256sum -c -
+    bash /tmp/install-opencode.sh --version "{{ OPENCODE_VERSION }}" --no-modify-path
+    rm -f /tmp/install-opencode.sh
+    install -m 0755 /root/.opencode/bin/opencode /usr/local/bin/opencode
+    rm -rf /root/.opencode
+
+    # --- MCP servers -------------------------------------------------------
+    npm install -g @upstash/context7-mcp@{{ CONTEXT7_MCP_VERSION }}
+    npm cache clean --force
+
+    # --- Runtime entrypoint ------------------------------------------------
+    chmod 0755 /usr/local/bin/bootstrap.py
+
+    # --- Bind mount points --------------------------------------------------
+    # The SIF is immutable at runtime, so every writable path is a bind and
+    # every mount point must already exist. No chown: Apptainer runs the
+    # container as the invoking user.
+    mkdir -p /workspace /run/secrets /run/llm /app/.config/opencode \ 
+             /app/.local/share /app/.cache
+    chmod 0755 /workspace /run/secrets /app
+
+    # --- GIT config ---------------------------------------------------------
+
+    # Mount point for the host's ~/.gitconfig (see bin/opencode-apptainer).
+    # Bound as GIT_CONFIG_GLOBAL rather than nested inside the /app bind.
+    #: > /opt/host-gitconfig
+    #chmod 0644 /opt/host-gitconfig
+
+    # Credential helper that never yields a credential, and says why.
+    # Helper stderr reaches the caller, so the agent gets an instruction
+    # instead of an opaque failure it will retry three times.
+    cat > /usr/local/bin/git-credential-none <<'HELPER'
+    #!/bin/sh
+    echo "opencode-sandbox: no git credentials here. fetch/pull/push are unavailable." >&2
+    echo "opencode-sandbox: ask the user to run them on the host." >&2
+    exit 0
+    HELPER
+    chmod 0755 /usr/local/bin/git-credential-none
+
+    cat > /opt/opencode-gitconfig <<'GITCONFIG'
+    [credential]
+        helper = none
+    [safe]
+        directory = /workspace
+    [commit]
+        gpgSign = false
+    [advice]
+        detachedHead = false
+    GITCONFIG
+    chmod 0644 /opt/opencode-gitconfig
+
+%environment
+    export DISPLAY=:99.0
+    export XDG_CONFIG_HOME=/app/.config
+    export OPENCODE_CONFIG_DIR=/app/.config/opencode
+    export XDG_DATA_HOME=/app/.local/share
+    export XDG_CACHE_HOME=/app/.cache
+    # PREPEND, never overwrite: the CUDA base sets PATH and LD_LIBRARY_PATH
+    # (/usr/local/cuda/bin, /usr/local/cuda/lib64). Clobbering them breaks nvcc.
+    export PATH="/usr/local/bin:${PATH}"
+    # HOME is set by the launcher via `--home <state-dir>:/app`.
+
+%runscript
+    exec /usr/bin/python3 /usr/local/bin/bootstrap.py "$@"
+
+%test
+    set -e
+    node --version
+    npm --version
+    python3 --version
+    python3 -m venv /tmp/test-venv && rm -rf /tmp/test-venv
+    command -v Xvfb
+    command -v rg
+    command -v jq
+    command -v git
+    # CUDA userspace is present in the image; the driver is not. nvcc must
+    # work at build time, nvidia-smi only works at runtime under `--nv`.
+    command -v nvcc && nvcc --version
+    # %test runs against the finished read-only image with no /app bind yet.
+    test_home="$(mktemp -d)"
+    HOME="$test_home" \
+    XDG_CONFIG_HOME="$test_home/.config" \
+    XDG_DATA_HOME="$test_home/.local/share" \
+    XDG_CACHE_HOME="$test_home/.cache" \
+    OPENCODE_CONFIG_DIR="$test_home/.config/opencode" \
+        opencode --version
+    rm -rf "$test_home"
+
+%help
+    OpenCode CLI on a CUDA / Ubuntu 24.04 base, for a flat agentic loop:
+    the project toolchain and the agent share one sandbox, no nested runtime.
+
+    GPU access requires `--nv` on the launcher. Verify with:
+        apptainer exec --nv <image>.sif nvidia-smi
+
+    Python 3.12 is PEP 668 externally-managed: project venvs exist under
+    /workspace or /app.
+
+    Run it through the launcher, which applies the bind mounts, cgroup limits
+    and containment flags:
+
+        bin/opencode-apptainer [-w] [-e] [--memory 8g] [--cpus 8] [opencode args...]
+
+    Direct invocation (equivalent minimum):
+
+        apptainer run --containall \
+            --home ~/.opencode-apptainer:/app \
+            --workdir "$(mktemp -d)" \
+            --pwd /workspace \
+            --bind "$PWD:/workspace:rw" \
+            --bind ~/.opencode-apptainer/config:/app/.config/opencode:rw \
+            --bind ~/.opencode-apptainer/secrets:/run/secrets:ro \
+            opencode-container.sif
+
+    Everything else matches bin/opencode-apptainer: /workspace is the repo,
+    /app is the host state dir, /run/secrets holds one file per API key.

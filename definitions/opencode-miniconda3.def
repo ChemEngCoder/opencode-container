@@ -1,0 +1,168 @@
+# ---------------------------------------------------------------------------
+# OpenCode on continuumio/miniconda3 (Debian 12 bookworm).
+#
+# Pick the Bootstrap type that matches where your base image lives:
+#   Bootstrap: docker        + From: registry.example/img@sha256:...  (registry)
+#   Bootstrap: docker-daemon + From: my-conda-base:latest             (local docker)
+#   Bootstrap: localimage    + From: /path/to/base.sif                (local SIF)
+#
+# Security carry-over: pin by digest, not tag. Apptainer rejects a reference
+# carrying BOTH a tag and a digest, so write `repo@sha256:...` with no tag.
+# ---------------------------------------------------------------------------
+Bootstrap: docker
+From: {{ BASE_IMAGE }}
+
+%arguments
+    BASE_IMAGE=continuumio/miniconda3:25.3.1-1
+    OPENCODE_VERSION=1.18.25
+    OPENCODE_INSTALLER_SHA256=fc3c1b2123f49b6df545a7622e5127d21cd794b15134fc3b66e1ca49f7fb297e
+    NODE_MAJOR=24
+    CONTEXT7_MCP_VERSION=4.0.4
+
+%labels
+    org.opencontainers.image.title      opencode-miniconda3
+    org.opencontainers.image.description OpenCode CLI on a miniconda3 / Debian 12 base
+    opencode.version                    {{ OPENCODE_VERSION }}
+    base.image                          {{ BASE_IMAGE }}
+
+%files
+    bootstrap.py /usr/local/bin/bootstrap.py
+
+%post
+    set -eux
+    export DEBIAN_FRONTEND=noninteractive
+
+    apt-get update
+    apt-get install --no-install-recommends -y \
+        ca-certificates \
+        curl \
+        gnupg \
+        git \
+        python3 \
+        python3-venv \
+        xvfb \
+        xclip \
+        wl-clipboard \
+        ripgrep \
+        jq \
+        rustc \
+        cargo
+    rm -rf /var/lib/apt/lists/*
+    # NOTE: system python3 is installed deliberately. The miniconda3 image is
+    # debian-slim based and ships only /opt/conda/bin/python; %runscript calls
+    # /usr/bin/python3 for bootstrap.py, so it has to exist. bootstrap.py then
+    # runs independently of whatever conda env the agent activates.
+
+    # --- Node.js from NodeSource ------------------------------------------
+    mkdir -p /etc/apt/keyrings
+    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+        | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_{{ NODE_MAJOR }}.x nodistro main" \
+        > /etc/apt/sources.list.d/nodesource.list
+    apt-get update
+    apt-get install --no-install-recommends -y nodejs
+    rm -rf /var/lib/apt/lists/*
+    # Node lands in /usr/bin; conda's /opt/conda/bin comes first on PATH, so
+    # `conda install nodejs` in a project env would shadow it. Don't.
+
+    # --- OpenCode (checksum-verified official installer) -------------------
+    echo "Installing OpenCode version: {{ OPENCODE_VERSION }}"
+    curl -fsSL https://opencode.ai/install -o /tmp/install-opencode.sh
+    echo "{{ OPENCODE_INSTALLER_SHA256 }}  /tmp/install-opencode.sh" | sha256sum -c -
+    bash /tmp/install-opencode.sh --version "{{ OPENCODE_VERSION }}" --no-modify-path
+    rm -f /tmp/install-opencode.sh
+    install -m 0755 /root/.opencode/bin/opencode /usr/local/bin/opencode
+    rm -rf /root/.opencode
+
+    # --- MCP servers -------------------------------------------------------
+    npm install -g @upstash/context7-mcp@{{ CONTEXT7_MCP_VERSION }}
+    npm cache clean --force
+
+    # --- Conda: redirect all writes off the read-only image -----------------
+    # /opt/conda is inside the SIF and immutable at runtime. Without this,
+    # `conda create` and `conda install` fail with EROFS. envs and pkgs go
+    # under /app, which the launcher binds to the host state dir.
+    cat > /opt/conda/.condarc <<'CONDARC'
+envs_dirs:
+  - /app/.conda/envs
+pkgs_dirs:
+  - /app/.conda/pkgs
+auto_activate_base: false
+CONDARC
+    chmod 0644 /opt/conda/.condarc
+    mkdir -p /app/.conda/envs /app/.conda/pkgs
+    conda clean --all --yes
+
+    # =======================================================================
+    # PROJECT DEPENDENCIES
+    # Two options, and the choice matters for the agentic loop:
+    #
+    # (a) Bake the env into the image -- reproducible, but frozen. The agent
+    #     cannot add a package without a rebuild.
+    #       conda env create -p /opt/conda/envs/project -f /tmp/environment.yml
+    #     (%files an environment.yml in, and note this path IS writable during
+    #      %post but read-only afterwards.)
+    #
+    # (b) Let the agent build the env at runtime under /workspace/.venv or
+    #     /app/.conda/envs -- slower first run, but the loop stays closed.
+    #
+    # (b) is usually right for agentic work; (a) for reproducible CI images.
+    # =======================================================================
+
+    # --- Runtime entrypoint ------------------------------------------------
+    chmod 0755 /usr/local/bin/bootstrap.py
+
+    # --- Bind mount points --------------------------------------------------
+    mkdir -p /workspace /run/secrets /app/.config/opencode /app/.local/share /app/.cache
+    chmod 0755 /workspace /run/secrets /app
+    : > /opt/host-gitconfig
+    chmod 0644 /opt/host-gitconfig
+
+%environment
+    export DISPLAY=:99.0
+    export XDG_CONFIG_HOME=/app/.config
+    export OPENCODE_CONFIG_DIR=/app/.config/opencode
+    export XDG_DATA_HOME=/app/.local/share
+    export XDG_CACHE_HOME=/app/.cache
+    # PREPEND: the base image puts /opt/conda/bin on PATH. Keep it.
+    export PATH="/usr/local/bin:${PATH}"
+    export CONDARC=/opt/conda/.condarc
+    export CONDA_ENVS_PATH=/app/.conda/envs
+    export CONDA_PKGS_DIRS=/app/.conda/pkgs
+    # HOME is set by the launcher via `--home <state-dir>:/app`.
+
+%runscript
+    exec /usr/bin/python3 /usr/local/bin/bootstrap.py "$@"
+
+%test
+    set -e
+    node --version
+    npm --version
+    /usr/bin/python3 --version
+    command -v Xvfb
+    command -v rg
+    command -v jq
+    command -v git
+    conda --version
+    # %test runs against the finished read-only image with no /app bind yet,
+    # so conda's envs_dirs are not writable here -- only check that it resolves.
+    conda config --show envs_dirs
+    test_home="$(mktemp -d)"
+    HOME="$test_home" \
+    XDG_CONFIG_HOME="$test_home/.config" \
+    XDG_DATA_HOME="$test_home/.local/share" \
+    XDG_CACHE_HOME="$test_home/.cache" \
+    OPENCODE_CONFIG_DIR="$test_home/.config/opencode" \
+        opencode --version
+    rm -rf "$test_home"
+
+%help
+    OpenCode CLI on a miniconda3 / Debian 12 base.
+
+    Conda envs and package cache are redirected to /app/.conda, which the
+    launcher binds to ~/.opencode-apptainer -- /opt/conda itself is read-only.
+    For envs that should travel with the repo, use a prefix env instead:
+        conda create -p /workspace/.venv python=3.12
+
+    Conda is not auto-activated. To activate inside a non-login shell:
+        . /opt/conda/etc/profile.d/conda.sh && conda activate <env>

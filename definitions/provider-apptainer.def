@@ -1,0 +1,192 @@
+# ---------------------------------------------------------------------------
+# OpenCode provider gateway.
+#
+# The only component with network access. Listens on a Unix socket, forwards to
+# exactly one upstream API host over TLS, and injects the API key from its own
+# secrets mount -- so the key never enters the OpenCode container.
+#
+#   OpenCode container (--net --network none)
+#     -> private 127.0.0.1:11434  (socat, from bootstrap.py)
+#     -> /run/llm/llm.sock        (bound from host tmpfs)
+#     -> THIS container           (nginx, host network)
+#     -> https://api.anthropic.com
+#
+# Build:  make build DEF=opencode-provider.def IMAGE_NAME=opencode-provider
+# ---------------------------------------------------------------------------
+Bootstrap: docker
+# This digest is debian:13-slim. Apptainer rejects a reference carrying both a
+# tag and a digest, so the tag lives in this comment instead.
+From: debian@sha256:d7e12182ce18b85b93007c1dedf31f2d29e01ccf3182cc4017c709b6259bc132
+
+%labels
+    org.opencontainers.image.title      opencode-provider
+    org.opencontainers.image.description Unix-socket to HTTPS provider gateway for OpenCode
+
+%post
+    set -eux
+    export DEBIAN_FRONTEND=noninteractive
+
+    apt-get update
+    apt-get install --no-install-recommends -y \
+        ca-certificates \
+        nginx-light \
+        curl
+    rm -rf /var/lib/apt/lists/*
+
+    # Bind mount points. The SIF is immutable at runtime; /tmp is the only
+    # writable path, and nginx is configured to keep all state there.
+    mkdir -p /run/llm /run/secrets
+    chmod 0755 /run/llm /run/secrets
+
+    # Strip the distro config: the runscript renders its own from scratch.
+    rm -rf /etc/nginx/sites-enabled /etc/nginx/conf.d /var/log/nginx
+    ln -sf /dev/stderr /var/log/nginx-error.log || true
+
+%environment
+    export PATH=/usr/local/bin:/usr/sbin:/usr/bin:/bin
+
+%runscript
+#!/bin/sh
+set -eu
+
+# ---- configuration --------------------------------------------------------
+UPSTREAM_HOST="${PROVIDER_UPSTREAM_HOST:?PROVIDER_UPSTREAM_HOST must be set (e.g. api.anthropic.com)}"
+AUTH_STYLE="${PROVIDER_AUTH_STYLE:-anthropic}"          # anthropic | bearer | none
+KEY_FILE="${PROVIDER_API_KEY_FILE:-/run/secrets/anthropic_api_key}"
+SOCKET="${PROVIDER_SOCKET:-/run/llm/llm.sock}"
+ANTHROPIC_VERSION="${PROVIDER_ANTHROPIC_VERSION:-2023-06-01}"
+READ_TIMEOUT="${PROVIDER_READ_TIMEOUT:-600s}"
+
+socket_dir="$(dirname "$SOCKET")"
+[ -d "$socket_dir" ] || { echo "error: $socket_dir not present; bind the host socket dir there" >&2; exit 1; }
+[ -w "$socket_dir" ] || { echo "error: $socket_dir not writable; bind it :rw, not :ro" >&2; exit 1; }
+
+# ---- auth header injection ------------------------------------------------
+AUTH_LINES=""
+if [ "$AUTH_STYLE" != "none" ]; then
+    [ -r "$KEY_FILE" ] || { echo "error: cannot read API key at $KEY_FILE" >&2; exit 1; }
+    API_KEY="$(tr -d '\r\n' < "$KEY_FILE")"
+    [ -n "$API_KEY" ] || { echo "error: $KEY_FILE is empty" >&2; exit 1; }
+    case "$AUTH_STYLE" in
+        anthropic)
+            AUTH_LINES="proxy_set_header x-api-key \"$API_KEY\";
+            proxy_set_header anthropic-version \"$ANTHROPIC_VERSION\";"
+            ;;
+        bearer)
+            AUTH_LINES="proxy_set_header Authorization \"Bearer $API_KEY\";"
+            ;;
+        *)
+            echo "error: PROVIDER_AUTH_STYLE must be anthropic, bearer or none" >&2
+            exit 1
+            ;;
+    esac
+fi
+
+# ---- render config into tmpfs --------------------------------------------
+# The rendered file contains the API key, so it lives in this container's
+# private /tmp at mode 0600 and is never visible to the OpenCode container.
+conf_dir=/tmp/provider
+mkdir -p "$conf_dir/body" "$conf_dir/proxy" "$conf_dir/fastcgi" "$conf_dir/uwsgi" "$conf_dir/scgi"
+umask 077
+
+# Clear a stale socket left by an unclean shutdown; nginx will not replace it.
+[ -S "$SOCKET" ] && rm -f "$SOCKET"
+
+cat > "$conf_dir/nginx.conf" <<CONF
+daemon off;
+pid $conf_dir/nginx.pid;
+error_log /dev/stderr warn;
+events { worker_connections 256; }
+
+http {
+    access_log off;
+    client_body_temp_path $conf_dir/body;
+    proxy_temp_path       $conf_dir/proxy;
+    fastcgi_temp_path     $conf_dir/fastcgi;
+    uwsgi_temp_path       $conf_dir/uwsgi;
+    scgi_temp_path        $conf_dir/scgi;
+
+    server {
+        listen unix:$SOCKET;
+        server_name _;
+
+        # Local health check: lets the readiness probe verify the socket
+        # without spending an upstream API call.
+        location = /healthz {
+            add_header Content-Type text/plain;
+            return 200 "ok\n";
+        }
+
+        location / {
+            # Static upstream -- no variables, so no resolver needed, and the
+            # allowlist is the config itself: exactly one host is reachable.
+            proxy_pass https://$UPSTREAM_HOST;
+
+            # Rewrite Host and SNI. The client sends Host: localhost, which
+            # any real API front end would reject.
+            proxy_set_header Host $UPSTREAM_HOST;
+            proxy_ssl_server_name on;
+            proxy_ssl_name $UPSTREAM_HOST;
+
+            # Verify the upstream certificate. Without this the TLS leg is
+            # decorative.
+            proxy_ssl_verify on;
+            proxy_ssl_verify_depth 3;
+            proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
+            proxy_ssl_protocols TLSv1.2 TLSv1.3;
+
+            # Streaming: SSE token-by-token responses must not be buffered.
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            proxy_buffering off;
+            proxy_request_buffering off;
+            proxy_read_timeout $READ_TIMEOUT;
+            proxy_send_timeout $READ_TIMEOUT;
+
+            $AUTH_LINES
+        }
+    }
+}
+CONF
+
+echo "provider: $SOCKET -> https://$UPSTREAM_HOST (auth: $AUTH_STYLE)"
+
+# nginx has no mode option for unix listeners, so the socket inherits the
+# umask. Fix it once nginx has created it; the 0700 socket directory is the
+# primary control either way.
+( for _ in 1 2 3 4 5 6 7 8 9 10; do
+      [ -S "$SOCKET" ] && { chmod 0600 "$SOCKET" 2>/dev/null || true; break; }
+      sleep 0.2
+  done ) &
+
+exec nginx -c "$conf_dir/nginx.conf"
+
+%test
+    set -e
+    nginx -v
+    test -f /etc/ssl/certs/ca-certificates.crt
+    test -d /run/llm
+    test -d /run/secrets
+    echo "provider image OK"
+
+%help
+    Unix-socket to HTTPS provider gateway for the isolated OpenCode container.
+
+    Required:
+        PROVIDER_UPSTREAM_HOST   e.g. api.anthropic.com, api.openai.com
+    Optional:
+        PROVIDER_AUTH_STYLE      anthropic (default) | bearer | none
+        PROVIDER_API_KEY_FILE    default /run/secrets/anthropic_api_key
+        PROVIDER_SOCKET          default /run/llm/llm.sock
+        PROVIDER_READ_TIMEOUT    default 600s
+
+    Run:
+        apptainer run \
+            --bind "$XDG_RUNTIME_DIR/opencode:/run/llm:rw" \
+            --bind ~/.opencode-apptainer/provider-secrets:/run/secrets:ro \
+            --env PROVIDER_UPSTREAM_HOST=api.anthropic.com \
+            opencode-provider.sif
+
+    Health check from the host:
+        curl --unix-socket "$XDG_RUNTIME_DIR/opencode/llm.sock" \
+             http://localhost/healthz
