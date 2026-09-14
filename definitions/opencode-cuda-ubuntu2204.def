@@ -75,7 +75,7 @@ From: {{ BASE_IMAGE }}
     # The SIF is immutable at runtime, so every writable path is a bind and
     # every mount point must already exist. No chown: Apptainer runs the
     # container as the invoking user.
-    mkdir -p /workspace /run/secrets /run/llm /app/.config/opencode \ 
+    mkdir -p /workspace /run/secrets /run/llm /app/.config/opencode \
         /app/.local/share /app/.cache
     chmod 0755 /workspace /run/secrets /app
     

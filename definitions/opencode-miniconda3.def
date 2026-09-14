@@ -113,7 +113,8 @@ CONDARC
     chmod 0755 /usr/local/bin/bootstrap.py
 
     # --- Bind mount points --------------------------------------------------
-    mkdir -p /workspace /run/secrets /app/.config/opencode /app/.local/share /app/.cache
+    mkdir -p /workspace /run/secrets /run/llm /app/.config/opencode \
+        /app/.local/share /app/.cache
     chmod 0755 /workspace /run/secrets /app
     : > /opt/host-gitconfig
     chmod 0644 /opt/host-gitconfig
