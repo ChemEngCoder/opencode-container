@@ -47,7 +47,6 @@ Stage: build
         ccache \
         cmake \
         git \
-        socat \
         libcurl4-openssl-dev \
         libgomp1 \
         ninja-build \
@@ -136,7 +135,7 @@ Stage: final
     apt-get update
     # libcurl4t64 is the Ubuntu 24.04 name; the fallback keeps this def usable
     # if you retarget the base image at 22.04.
-    apt-get install -y --no-install-recommends ca-certificates libgomp1 \
+    apt-get install -y --no-install-recommends ca-certificates libgomp1 socat \
         && { apt-get install -y --no-install-recommends libcurl4t64 \
              || apt-get install -y --no-install-recommends libcurl4; }
     rm -rf /var/lib/apt/lists/*
