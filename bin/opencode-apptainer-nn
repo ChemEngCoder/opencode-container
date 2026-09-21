@@ -219,6 +219,9 @@ set +e
     --bind "$WORKSPACE:/workspace:rw" \
     --bind "$state_dir/config:/app/.config/opencode:rw" \
     --bind "$state_dir/secrets:/run/secrets:ro" \
+    --bind "$OPENCODE_AGENTS:/app/.config/opencode/agents:ro" \
+    --bind "$OPENCODE_SKILLS:/app/.config/opencode/skills:ro" \
+    --bind "$OPENCODE_CONFIG:/app/.config/opencode/opencode.json:ro" \
     ${NET_ARGS[@]+"${NET_ARGS[@]}"} \
     ${GPU_ARGS[@]+"${GPU_ARGS[@]}"} \
     ${GIT_ARGS[@]+"${GIT_ARGS[@]}"} \
