@@ -202,6 +202,17 @@ GIT_ARGS=(
 )
 # and add /opt/opencode-gitconfig to the image's %post.
 
+# --- data --------------------------------------------------------------------
+# Adding data args if present
+
+DATA_ARGS=()
+if [ -n "${OPENCODE_DATA:-}" ]; then
+    DATA_ARGS+=(--bind "$OPENCODE_DATA:/app/data:ro")
+fi
+if [ -n "${OPENCODE_TEST_DATA:-}" ]; then
+    DATA_ARGS+=(--bind "$OPENCODE_TEST_DATA:/app/data:ro")
+fi
+
 # --- run --------------------------------------------------------------------
 # Security posture, versus the docker/podman flags this replaces:
 #   --read-only              -> inherent: the SIF is an immutable squashfs
@@ -222,6 +233,7 @@ set +e
     --bind "$OPENCODE_AGENTS:/app/.config/opencode/agents:ro" \
     --bind "$OPENCODE_SKILLS:/app/.config/opencode/skills:ro" \
     --bind "$OPENCODE_CONFIG:/app/.config/opencode/opencode.json:ro" \
+    ${DATA_ARGS[@]+"${DATA_ARGS[@]}"} \
     ${NET_ARGS[@]+"${NET_ARGS[@]}"} \
     ${GPU_ARGS[@]+"${GPU_ARGS[@]}"} \
     ${GIT_ARGS[@]+"${GIT_ARGS[@]}"} \
