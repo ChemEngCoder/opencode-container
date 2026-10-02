@@ -202,6 +202,20 @@ GIT_ARGS=(
 )
 # and add /opt/opencode-gitconfig to the image's %post.
 
+# --- config ------------------------------------------------------------------
+
+# Adding config args if present
+CONFIG_ARGS=()
+if [ -n "${OPENCODE_CONFIG:-}" ]; then
+    CONFIG_ARGS+=(--bind "$OPENCODE_CONFIG:/app/.config/opencode/opencode.json:ro")
+fi
+if [ -n "${OPENCODE_AGENTS:-}" ]; then
+    CONFIG_ARGS+=(--bind "$OPENCODE_AGENTS:/app/.config/opencode/agents:ro")
+fi
+if [ -n "${OPENCODE_SKILLS:-}" ]; then
+    CONFIG_ARGS+=(--bind "$OPENCODE_SKILLS:/app/.config/opencode/skills:ro")
+fi
+
 # --- data --------------------------------------------------------------------
 # Adding data args if present
 
@@ -210,7 +224,7 @@ if [ -n "${OPENCODE_DATA:-}" ]; then
     DATA_ARGS+=(--bind "$OPENCODE_DATA:/app/data:ro")
 fi
 if [ -n "${OPENCODE_TEST_DATA:-}" ]; then
-    DATA_ARGS+=(--bind "$OPENCODE_TEST_DATA:/app/data:ro")
+    DATA_ARGS+=(--bind "$OPENCODE_TEST_DATA:/app/tests/data:ro")
 fi
 
 # --- run --------------------------------------------------------------------
@@ -230,9 +244,7 @@ set +e
     --bind "$WORKSPACE:/workspace:rw" \
     --bind "$state_dir/config:/app/.config/opencode:rw" \
     --bind "$state_dir/secrets:/run/secrets:ro" \
-    --bind "$OPENCODE_AGENTS:/app/.config/opencode/agents:ro" \
-    --bind "$OPENCODE_SKILLS:/app/.config/opencode/skills:ro" \
-    --bind "$OPENCODE_CONFIG:/app/.config/opencode/opencode.json:ro" \
+    ${CONFIG_ARGS[@]+"${CONFIG_ARGS[@]}"} \
     ${DATA_ARGS[@]+"${DATA_ARGS[@]}"} \
     ${NET_ARGS[@]+"${NET_ARGS[@]}"} \
     ${GPU_ARGS[@]+"${GPU_ARGS[@]}"} \
