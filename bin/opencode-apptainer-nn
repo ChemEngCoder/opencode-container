@@ -213,7 +213,7 @@ if [ -n "${OPENCODE_AGENTS:-}" ]; then
     CONFIG_ARGS+=(--bind "$OPENCODE_AGENTS:/app/.config/opencode/agents:ro")
 fi
 if [ -n "${OPENCODE_SKILLS:-}" ]; then
-    CONFIG_ARGS+=(--bind "$OPENCODE_SKILLS:/app/.config/opencode/skills:ro")
+    CONFIG_ARGS+=(--bind "$OPENCODE_SKILLS:/workspace/.opencode/skills:ro")
 fi
 
 # --- data --------------------------------------------------------------------
