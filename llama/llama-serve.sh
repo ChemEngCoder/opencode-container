@@ -64,8 +64,6 @@ echo "starting $LLAMA_BIN on 127.0.0.1:$LLAMA_PORT (private loopback)"
     --port "$LLAMA_PORT" \
     --ctx-size "$LLAMA_CTX" \
     --n-gpu-layers "$LLAMA_NGL" \
-    --parallel "$LLAMA_PARALLEL" \
-    --kv-unified-per-slot "LLAMA_CTX" \
     --alias local-model &
 socat_pid=$!
 
