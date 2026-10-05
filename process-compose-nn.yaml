@@ -46,6 +46,7 @@ processes:
       --env LLAMA_PORT=${LLAMA_PORT}
       --env LLAMA_CTX=${LLAMA_CTX}
       --env LLAMA_NGL=${LLAMA_NGL}
+      --env LLAMA_PARALLEL=${LLAMA_PARALLEL}
       ${LLAMA_SIF}
       sh /opt/scripts/llama-serve.sh
     availability:
