@@ -222,10 +222,10 @@ fi
 
 DATA_ARGS=()
 if [ -n "${OPENCODE_DATA:-}" ]; then
-    DATA_ARGS+=(--bind "$OPENCODE_DATA:/app/data:ro")
+    DATA_ARGS+=(--bind "$OPENCODE_DATA:/workspace/data:ro")
 fi
 if [ -n "${OPENCODE_TEST_DATA:-}" ]; then
-    DATA_ARGS+=(--bind "$OPENCODE_TEST_DATA:/app/tests/data:ro")
+    DATA_ARGS+=(--bind "$OPENCODE_TEST_DATA:/workspace/tests/data:ro")
 fi
 
 # --- run --------------------------------------------------------------------
