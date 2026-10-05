@@ -15,12 +15,13 @@
 # variable expansion -- a reliable source of silent breakage.
 #
 # Expected environment (pass with apptainer --env, or export before launch):
-#   LLAMA_MODEL   path to the .gguf INSIDE the container (e.g. /models/foo.gguf)
-#   LLAMA_PORT    private loopback port                  (default 8080)
-#   LLAMA_CTX     context size                           (default 16384)
-#   LLAMA_NGL     GPU layers                             (default 999)
-#   LLAMA_BIN     server binary                          (default llama-server)
-#   LLM_SOCKET    socket path inside the container       (default /run/llm/llm.sock)
+#   LLAMA_MODEL     path to the .gguf INSIDE the container (e.g. /models/foo.gguf)
+#   LLAMA_PORT      private loopback port                  (default 8080)
+#   LLAMA_CTX       context size                           (default 16384)
+#   LLAMA_NGL       GPU layers                             (default 999)
+#   LLAMA_PARALLEL  number of parallel model clients       (default 999)
+#   LLAMA_BIN       server binary                          (default llama-server)
+#   LLM_SOCKET      socket path inside the container       (default /run/llm/llm.sock)
 
 set -eu
 
@@ -28,6 +29,7 @@ set -eu
 LLAMA_PORT="${LLAMA_PORT:-8080}"
 LLAMA_CTX="${LLAMA_CTX:-16384}"
 LLAMA_NGL="${LLAMA_NGL:-999}"
+LLAMA_PARALLEL="${LLAMA_PARALLEL:-4}"
 LLAMA_BIN="${LLAMA_BIN:-llama-server}"
 LLM_SOCKET="${LLM_SOCKET:-/run/llm/llm.sock}"
 
@@ -62,15 +64,9 @@ echo "starting $LLAMA_BIN on 127.0.0.1:$LLAMA_PORT (private loopback)"
     --port "$LLAMA_PORT" \
     --ctx-size "$LLAMA_CTX" \
     --n-gpu-layers "$LLAMA_NGL" \
+    --parallel "$LLAMA_PARALLEL" \
+    --kv-unified-per-slot "LLAMA_CTX" \
     --alias local-model &
-llama_pid=$!
-
-# mode=0600: only the owning UID can connect. unlink-early clears a stale
-# socket left behind by an unclean shutdown.
-echo "bridging $LLM_SOCKET -> 127.0.0.1:$LLAMA_PORT"
-socat \
-    UNIX-LISTEN:"$LLM_SOCKET",fork,mode=0600,unlink-early \
-    TCP:127.0.0.1:"$LLAMA_PORT" &
 socat_pid=$!
 
 # Exit as soon as EITHER dies, so process-compose restarts the pair together.
