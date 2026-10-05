@@ -64,7 +64,16 @@ echo "starting $LLAMA_BIN on 127.0.0.1:$LLAMA_PORT (private loopback)"
     --port "$LLAMA_PORT" \
     --ctx-size "$LLAMA_CTX" \
     --n-gpu-layers "$LLAMA_NGL" \
+    --parallel "$LLAMA_PARALLEL" \
     --alias local-model &
+llama_pid=$!
+
+# mode=0600: only the owning UID can connect. unlink-early clears a stale
+# socket left behind by an unclean shutdown.
+echo "bridging $LLM_SOCKET -> 127.0.0.1:$LLAMA_PORT"
+socat \
+    UNIX-LISTEN:"$LLM_SOCKET",fork,mode=0600,unlink-early \
+    TCP:127.0.0.1:"$LLAMA_PORT" &
 socat_pid=$!
 
 # Exit as soon as EITHER dies, so process-compose restarts the pair together.
