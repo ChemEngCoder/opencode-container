@@ -31,7 +31,7 @@ Stage: build
     # H100 is compute capability 9.0. "90-real" emits SASS for sm_90 only and
     # skips the PTX blob. Use "80-real;90-real" for a mixed A100/H100 cluster,
     # or append ";90-virtual" if you want JIT forward-compat onto Blackwell.
-    CUDA_ARCH="90-real"
+    CUDA_ARCH="86-real;90-real"
 
     # Single directory for executables AND backend modules. This is the whole
     # point of rev 2 — do not split these apart again.
