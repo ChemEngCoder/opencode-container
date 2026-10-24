@@ -32,6 +32,8 @@ LLAMA_NGL="${LLAMA_NGL:-999}"
 LLAMA_PARALLEL="${LLAMA_PARALLEL:-4}"
 LLAMA_BIN="${LLAMA_BIN:-llama-server}"
 LLM_SOCKET="${LLM_SOCKET:-/run/llm/llm.sock}"
+SPLIT_MODE="${SPLIT_MODE:-layer}"
+TENSOR_SPLIT="${TENSOR_SPLIT:-1,1}"
 
 if [ ! -f "$LLAMA_MODEL" ]; then
     echo "error: model not found at $LLAMA_MODEL (check the --bind for MODEL_DIR)" >&2
@@ -64,6 +66,8 @@ echo "starting $LLAMA_BIN on 127.0.0.1:$LLAMA_PORT (private loopback)"
     --port "$LLAMA_PORT" \
     --ctx-size "$LLAMA_CTX" \
     --n-gpu-layers "$LLAMA_NGL" \
+    --split-mode "$SPLIT_MODE" \
+    -- tensor-split 1,1 \
     --alias local-model &
 llama_pid=$!
 

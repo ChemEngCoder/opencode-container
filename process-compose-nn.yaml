@@ -17,6 +17,8 @@ environment:
   - "LLAMA_CTX=${LLAMA_CTX:-162304}"
   - "LLAMA_NGL=${LLAMA_NGL:-999}"
   - "LLM_SOCKET_DIR=${LLM_SOCKET_DIR:-${XDG_RUNTIME_DIR}/opencode}"
+  - "SPLIT_MODE=${SPLIT_MODE:-layer}"
+  - "TENSOR_SPLIT=${TENSOR_SPLIT:-1,1}"
 
 processes:
 
@@ -47,6 +49,8 @@ processes:
       --env LLAMA_CTX=${LLAMA_CTX}
       --env LLAMA_NGL=${LLAMA_NGL}
       --env LLAMA_PARALLEL=${LLAMA_PARALLEL}
+      --env SPLIT_MODE=${SPLIT_MODE}
+      --end TENSOR_SPLIT=${TENSOR_SPLIT}
       ${LLAMA_SIF}
       sh /opt/scripts/llama-serve.sh
     availability:
