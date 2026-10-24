@@ -67,7 +67,7 @@ echo "starting $LLAMA_BIN on 127.0.0.1:$LLAMA_PORT (private loopback)"
     --ctx-size "$LLAMA_CTX" \
     --n-gpu-layers "$LLAMA_NGL" \
     --split-mode "$SPLIT_MODE" \
-    -- tensor-split 1,1 \
+    --tensor-split 1,1 \
     --alias local-model &
 llama_pid=$!
 
