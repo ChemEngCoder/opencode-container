@@ -50,7 +50,7 @@ processes:
       --env LLAMA_NGL=${LLAMA_NGL}
       --env LLAMA_PARALLEL=${LLAMA_PARALLEL}
       --env SPLIT_MODE=${SPLIT_MODE}
-      --end TENSOR_SPLIT=${TENSOR_SPLIT}
+      --env TENSOR_SPLIT=${TENSOR_SPLIT}
       ${LLAMA_SIF}
       sh /opt/scripts/llama-serve.sh
     availability:
