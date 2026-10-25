@@ -1,0 +1,139 @@
+# Apptainer recipe for VeroFess/llama.cpp_3090x2_qwen3.8_q8_opt
+# Qwen3.8-27B-Q8_0 on 2x RTX 3090 (SM86), CUDA 13.0.2, Ubuntu 24.04
+#
+# Build (needs root or --fakeroot; no GPU needed at build time):
+#   apptainer build --fakeroot llama-qwen38.sif llama-qwen38.def
+# Override build arguments (Apptainer >= 1.2):
+#   apptainer build --fakeroot --build-arg JOBS=8 --build-arg NATIVE=ON llama-qwen38.sif llama-qwen38.def
+#
+# Run:
+#   apptainer run --nv --env CUDA_VISIBLE_DEVICES=0,1 \
+#     --bind /models:/models:ro llama-qwen38.sif
+
+# ---------------------------------------------------------------- build stage
+Bootstrap: docker
+From: nvidia/cuda:13.0.2-devel-ubuntu24.04
+Stage: build
+
+%arguments
+    REPO=https://github.com/VeroFess/llama.cpp_3090x2_qwen3.8_q8_opt.git
+    COMMIT=3ba533a54aacf9091f669f8a16cdaf88c8e8e60d
+    JOBS=4
+    NATIVE=OFF
+
+%post
+    set -eu
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        build-essential ca-certificates cmake git ninja-build pkg-config \
+        libssl-dev libcurl4-openssl-dev \
+        libnccl2 libnccl-dev
+    rm -rf /var/lib/apt/lists/*
+
+    git clone {{ REPO }} /src
+    cd /src
+    git checkout {{ COMMIT }}
+
+    # GGML_NATIVE=OFF keeps CPU code portable if the image is built on a
+    # different machine than the GPU host. Use NATIVE=ON when building on the host.
+    cmake --preset qwen38-3090-release -DGGML_NATIVE={{ NATIVE }} 2>&1 | tee /src/configure.log
+    if grep -qi "NCCL not found" /src/configure.log; then
+        echo "ERROR: NCCL was not found; refusing to build the slow fallback." >&2
+        exit 1
+    fi
+
+    # The CUDA FlashAttention kernels are memory-hungry to compile; raise JOBS
+    # only if the build machine has RAM to spare (roughly 4-6 GB per job).
+    cmake --build --preset qwen38-3090-release -j {{ JOBS }} \
+        --target llama-server llama-bench llama-gguf
+
+    ldd /src/build-qwen38-3090/bin/llama-server | grep -q libnccl \
+        || { echo "ERROR: llama-server is not linked against NCCL" >&2; exit 1; }
+
+    # Collect everything the runtime stage needs into one place.
+    mkdir -p /opt/out/bin /opt/out/lib /opt/out/tools
+    cp /src/build-qwen38-3090/bin/llama-server \
+       /src/build-qwen38-3090/bin/llama-bench \
+       /src/build-qwen38-3090/bin/llama-gguf /opt/out/bin/
+    cp /src/tools/llama-qwen38-tune /opt/out/tools/
+    # Ship the exact NCCL the binary was linked against.
+    cp -L "$(ldconfig -p | awk '/libnccl\.so\.2 /{print $NF; exit}')" /opt/out/lib/libnccl.so.2
+    echo "{{ COMMIT }}" > /opt/out/COMMIT
+
+# -------------------------------------------------------------- runtime stage
+Bootstrap: docker
+From: nvidia/cuda:13.0.2-runtime-ubuntu24.04
+Stage: final
+
+%files from build
+    /opt/out /opt/llama.cpp
+
+%post
+    set -eu
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        ca-certificates libcurl4t64 libssl3t64 libgomp1 pciutils python3
+    rm -rf /var/lib/apt/lists/*
+    chmod +x /opt/llama.cpp/bin/* /opt/llama.cpp/tools/*
+
+%environment
+    export PATH=/opt/llama.cpp/bin:/opt/llama.cpp/tools:$PATH
+    export LD_LIBRARY_PATH=/opt/llama.cpp/lib:${LD_LIBRARY_PATH:-}
+    export NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    export GGML_CUDA_P2P=1
+    export GGML_CUDA_ALLREDUCE=nccl
+    export NCCL_DEBUG=${NCCL_DEBUG:-WARN}
+    export LLAMA_CUDA_WATCHDOG_MS=${LLAMA_CUDA_WATCHDOG_MS:-300000}
+    export QWEN38_MODEL=${QWEN38_MODEL:-/models/Qwen3.8-27B-Q8_0.gguf}
+    export QWEN38_PORT=${QWEN38_PORT:-8080}
+    export QWEN38_HOST=${QWEN38_HOST:-0.0.0.0}
+
+%runscript
+    # With no arguments: start the reference profile.
+    # With arguments: run llama-server with exactly those arguments.
+    if [ "$#" -eq 0 ]; then
+        exec llama-server \
+            --model "$QWEN38_MODEL" \
+            --alias Qwen3.8-27B-Q8_0 \
+            --profile qwen38-27b-q8-2x3090 \
+            --split-mode tensor \
+            --ubatch-size 1024 \
+            --reasoning off \
+            --reasoning-preserve \
+            --host "$QWEN38_HOST" \
+            --port "$QWEN38_PORT" \
+            --metrics
+    fi
+    exec llama-server "$@"
+
+%startscript
+    exec llama-server \
+        --model "$QWEN38_MODEL" \
+        --alias Qwen3.8-27B-Q8_0 \
+        --profile qwen38-27b-q8-2x3090 \
+        --split-mode tensor \
+        --ubatch-size 1024 \
+        --reasoning off \
+        --reasoning-preserve \
+        --host "$QWEN38_HOST" \
+        --port "$QWEN38_PORT" \
+        --metrics
+
+%test
+    test -x /opt/llama.cpp/bin/llama-server
+    test -f /opt/llama.cpp/lib/libnccl.so.2
+
+%labels
+    org.opencontainers.image.source https://github.com/VeroFess/llama.cpp_3090x2_qwen3.8_q8_opt
+    Description llama.cpp fork tuned for Qwen3.8-27B-Q8_0 on 2x RTX 3090
+
+%help
+    Qwen3.8-27B-Q8_0 llama-server for two RTX 3090s.
+
+    apptainer run --nv --env CUDA_VISIBLE_DEVICES=0,1 \
+      --bind /models:/models:ro llama-qwen38.sif
+
+    Env overrides: QWEN38_MODEL, QWEN38_PORT, QWEN38_HOST, LLAMA_CUDA_WATCHDOG_MS.
+    Pass any arguments to run llama-server with your own flags instead.
