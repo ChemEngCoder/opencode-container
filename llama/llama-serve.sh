@@ -33,11 +33,9 @@ LLAMA_PARALLEL="${LLAMA_PARALLEL:-4}"
 LLAMA_BIN="${LLAMA_BIN:-llama-server}"
 LLM_SOCKET="${LLM_SOCKET:-/run/llm/llm.sock}"
 
-SPLIT_ARGS=()
+SPLIT_ARGS=""
 if [ -n "${SPLIT_MODE:-}" ]; then
-    SPLIT_ARGS+=(--split-mode "${SPLIT_MODE}")
-    SPLIT_ARGS+=(--tensor-split "${TENSOR_SPLIT:-1,1}")
-    SPLIT_ARGS+=(--fit "off")
+    SPLIT_ARGS="--split-mode ${SPLIT_MODE} --tensor-split ${TENSOR_SPLIT:-1,1} --fit off"
 fi
 
 
@@ -72,7 +70,7 @@ echo "starting $LLAMA_BIN on 127.0.0.1:$LLAMA_PORT (private loopback)"
     --port "$LLAMA_PORT" \
     --ctx-size "$LLAMA_CTX" \
     --n-gpu-layers "$LLAMA_NGL" \
-    ${SPLIT_ARGS[@]+"${SPLIT_ARGS[@]}"} \
+    ${SPLIT_ARGS} \
     --alias local-model &
 llama_pid=$!
 
