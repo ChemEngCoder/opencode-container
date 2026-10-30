@@ -17,8 +17,6 @@ environment:
   - "LLAMA_CTX=${LLAMA_CTX:-162304}"
   - "LLAMA_NGL=${LLAMA_NGL:-999}"
   - "LLM_SOCKET_DIR=${LLM_SOCKET_DIR:-${XDG_RUNTIME_DIR}/opencode}"
-  - "SPLIT_MODE=${SPLIT_MODE:-layer}"
-  - "TENSOR_SPLIT=${TENSOR_SPLIT:-1,1}"
 
 processes:
 
@@ -39,20 +37,7 @@ processes:
     #  --ctx-size ${LLAMA_CTX}
     #  --alias local-model
     command: >
-      apptainer exec --nv
-      --net --network none
-      --bind ${MODEL_DIR}:/models:ro
-      --bind ${LLM_SOCKET_DIR}:/run/llm:rw
-      --bind ${PWD}/llama:/opt/scripts:ro
-      --env LLAMA_MODEL=${LLAMA_MODEL}
-      --env LLAMA_PORT=${LLAMA_PORT}
-      --env LLAMA_CTX=${LLAMA_CTX}
-      --env LLAMA_NGL=${LLAMA_NGL}
-      --env LLAMA_PARALLEL=${LLAMA_PARALLEL}
-      --env SPLIT_MODE=${SPLIT_MODE}
-      --env TENSOR_SPLIT=${TENSOR_SPLIT}
-      ${LLAMA_SIF}
-      sh /opt/scripts/llama-serve.sh
+      ./scripts/llama.sh
     availability:
       restart: on_failure
       backoff_seconds: 5
