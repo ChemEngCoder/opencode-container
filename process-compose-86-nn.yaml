@@ -1,0 +1,36 @@
+environment:
+  - "LLM_SOCKET_DIR=${LLM_SOCKET_DIR:-${XDG_RUNTIME_DIR}/opencode}"
+
+processes:
+  llama-server:
+    command: >-
+      apptainer run --app bridge --nv --pid --net --network none
+      --bind /models:/models:ro
+      --bind ${XDG_RUNTIME_DIR}/opencode:/run/llm:rw
+      --env CUDA_VISIBLE_DEVICES=0,1
+      --env LLAMA_MODEL=/models/Qwen3.8-27B-Q8_0.gguf
+      ${LLAMA_SIF}
+    availability:
+      restart: on_failure
+      backoff_seconds: 10
+    readiness_probe:
+      exec:
+        command: 'curl -sf --unix-socket "${LLM_SOCKET_DIR}/llm.sock" http://localhost/v1/models'
+      initial_delay_seconds: 30
+      period_seconds: 10
+      timeout_seconds: 5
+      failure_threshold: 60
+    shutdown:
+      signal: 15
+      timeout_seconds: 45
+  verify:
+    command: >
+      sh -c 'curl -sf --unix-socket "${LLM_SOCKET_DIR}/llm.sock"
+      http://localhost/v1/models > /dev/null
+      && echo "OK: socket serves /v1/models"
+      || { echo "FAIL: socket did not answer" >&2; exit 1; }'
+    depends_on:
+      llama-server:
+        condition: process_healthy
+    availability:
+      restart: "no"

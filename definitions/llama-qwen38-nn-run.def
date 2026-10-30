@@ -1,0 +1,164 @@
+# -----------------------------------------------------------------------------
+# Stage 1 — build
+# -----------------------------------------------------------------------------
+Bootstrap: localimage
+From: {{ BASE_IMAGE }}
+Stage: build
+
+%arguments
+    BASE_IMAGE=/home/markus/Documents/GitProjects/opencode-container/images/llama-86-nn.sif
+
+# -----------------------------------------------------------------------------
+# Stage 2 — runtime
+# -----------------------------------------------------------------------------
+Bootstrap: docker
+From: nvidia/cuda:13.0.2-runtime-ubuntu24.04
+Stage: final
+
+%files from build
+    /opt/llama.cpp /opt/llama.cpp
+
+%files
+    /home/markus/Documents/GitProjects/opencode-container/llama/llama-serve-86.sh /opt/llama.cpp/bin/llama-serve.sh
+
+%post
+    set -eux
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    # socat:   the Unix-socket bridge in llama-serve.sh
+    # libssl3t64: OpenSSL for the profile's model hashing and -hf pulls
+    #          (Ubuntu 24.04 name; libssl3 on 22.04)
+    # python3: llama-qwen38-tune
+    # curl:    health checks from inside the container (`apptainer exec`)
+    apt-get install -y --no-install-recommends \
+        ca-certificates curl libgomp1 python3 socat \
+        && { apt-get install -y --no-install-recommends libssl3t64 \
+             || apt-get install -y --no-install-recommends libssl3; }
+    rm -rf /var/lib/apt/lists/*
+
+    chmod 0755 /opt/llama.cpp/bin/llama-serve.sh /opt/llama.cpp/bin/llama-qwen38-tune
+
+    # Bind targets. /run/llm is where the host's socket directory lands; it
+    # must exist in the image because --net --network none runs are usually
+    # unprivileged, and an unprivileged bind needs a pre-made mount point
+    # (or an underlay) to land on.
+    mkdir -p /models /workspace /run/llm
+    chmod 1777 /workspace
+
+%environment
+    export LLAMA_HOME=/opt/llama.cpp
+    export PATH="${LLAMA_HOME}/bin:${PATH}"
+    # Appended, never overwritten: --nv puts the host driver libraries on
+    # LD_LIBRARY_PATH (/.singularity.d/libs), and clobbering that is the
+    # classic "cannot find libcuda.so.1" failure. Our own entry is only for
+    # libnccl.so.2; everything else in the binary is linked statically.
+    export LD_LIBRARY_PATH="${LLAMA_HOME}/bin:${LD_LIBRARY_PATH:-}"
+    # Models downloaded with -hf land here; bind it, or the container writes
+    # to $HOME.
+    export LLAMA_CACHE="${LLAMA_CACHE:-/workspace/.cache/llama.cpp}"
+    # The fork's fast path: P2P between the two cards, NCCL all-reduce.
+    export GGML_CUDA_P2P="${GGML_CUDA_P2P:-1}"
+    export GGML_CUDA_ALLREDUCE="${GGML_CUDA_ALLREDUCE:-nccl}"
+    export NCCL_DEBUG="${NCCL_DEBUG:-WARN}"
+    # Watchdog for one decode/sync call. 120 s is the fork's default; very
+    # long prompts on warm cards can need more. Minimum accepted is 30000.
+    export LLAMA_CUDA_WATCHDOG_MS="${LLAMA_CUDA_WATCHDOG_MS:-300000}"
+
+%runscript
+    # `apptainer run <sif> <tool> [args]` dispatches to anything in
+    # /opt/llama.cpp/bin (llama-* binaries, llama-serve.sh, llama-qwen38-tune);
+    # anything else is treated as arguments to llama-server.
+    if [ "$#" -gt 0 ] && [ -x "/opt/llama.cpp/bin/$1" ]; then
+        _exe="$1"; shift
+        exec "/opt/llama.cpp/bin/${_exe}" "$@"
+    fi
+    exec /opt/llama.cpp/bin/llama-server "$@"
+
+%startscript
+    # `apptainer instance start ... llama-nn.sif <name>` runs the bridge.
+    exec /opt/llama.cpp/bin/llama-serve.sh
+
+%apprun bridge
+    exec /opt/llama.cpp/bin/llama-serve.sh "$@"
+
+%apprun server
+    exec /opt/llama.cpp/bin/llama-server "$@"
+
+%apprun cli
+    exec /opt/llama.cpp/bin/llama-cli "$@"
+
+%apprun bench
+    exec /opt/llama.cpp/bin/llama-bench "$@"
+
+%apprun quantize
+    exec /opt/llama.cpp/bin/llama-quantize "$@"
+
+%apprun perplexity
+    exec /opt/llama.cpp/bin/llama-perplexity "$@"
+
+%apprun tune
+    exec python3 -B /opt/llama.cpp/bin/llama-qwen38-tune "$@"
+
+%test
+    # Runs at build time, without a GPU and without --nv, so no binary that
+    # links libcuda.so.1 can be executed here. What CAN be proven: every
+    # library except the driver resolves, and the bridge has what it needs.
+    # Device visibility is checked at runtime with:
+    #   apptainer exec --nv llama-nn.sif nvidia-smi topo -p2p r
+    set -e
+    for exe in llama-server llama-cli llama-bench; do
+        if ldd "/opt/llama.cpp/bin/${exe}" | grep -v 'libcuda.so.1' | grep -q 'not found'; then
+            echo "FAIL: unresolved deps in ${exe}"
+            ldd "/opt/llama.cpp/bin/${exe}" | grep 'not found'
+            exit 1
+        fi
+    done
+    command -v socat >/dev/null || { echo "FAIL: socat missing"; exit 1; }
+    sh -n /opt/llama.cpp/bin/llama-serve.sh || { echo "FAIL: llama-serve.sh syntax"; exit 1; }
+    test -d /run/llm || { echo "FAIL: /run/llm bind target missing"; exit 1; }
+    echo "OK: libraries resolve, bridge is present"
+    cat /opt/llama.cpp/BUILD_INFO
+
+%labels
+    Author        Mark
+    Application   llama.cpp (VeroFess Qwen3.8 2x3090 fork)
+    Backend       CUDA (Ampere / sm_86)
+    Base          nvidia/cuda:13.0.2-runtime-ubuntu24.04
+
+%help
+    llama.cpp, VeroFess Qwen3.8 fork, compiled for 2x RTX 3090
+    (compute capability 8.6), with a Unix-socket bridge.
+
+    GPU access requires --nv, which binds the host NVIDIA driver into the
+    container. No driver is installed in the image by design. The host
+    driver must support CUDA 13.0.
+
+      # serve over a Unix socket; the container itself has no network
+      mkdir -p -m 700 "$XDG_RUNTIME_DIR/llm"
+      apptainer run --app bridge --nv --pid --net --network none \
+          --bind /models:/models:ro \
+          --bind "$XDG_RUNTIME_DIR/llm":/run/llm:rw \
+          --env CUDA_VISIBLE_DEVICES=0,1 \
+          --env LLAMA_MODEL=/models/Qwen3.8-27B-Q8_0.gguf \
+          llama-nn.sif
+
+      # talk to it from the host
+      curl --unix-socket "$XDG_RUNTIME_DIR/llm/llm.sock" http://localhost/v1/models
+
+      # any other model: turn the Qwen3.8 profile off (generic mode)
+      ... --env LLAMA_PROFILE= --env LLAMA_MODEL=/models/other.gguf \
+          --env LLAMA_CTX=32768 ...
+
+      # plain HTTP instead of the bridge (host network)
+      apptainer run --nv --bind /models:/models:ro llama-nn.sif \
+          --model /models/Qwen3.8-27B-Q8_0.gguf \
+          --profile qwen38-27b-q8-2x3090 --split-mode tensor --port 8080
+
+      # confirm both GPUs and the P2P path are visible
+      apptainer exec --nv llama-nn.sif nvidia-smi topo -p2p r
+
+    llama-serve.sh documents every environment variable it reads:
+      apptainer exec llama-nn.sif sed -n '1,60p' /opt/llama.cpp/bin/llama-serve.sh
+
+    Build provenance (repo, commit, nvcc, NCCL version) is recorded in
+    /opt/llama.cpp/BUILD_INFO.
